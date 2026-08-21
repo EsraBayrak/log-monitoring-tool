@@ -11,8 +11,8 @@
             color: #d4d4d4;
             font-family: 'Consolas', monospace;
             font-size: 0.85rem;
-            min-height: 400px;
-            max-height: 520px;
+            min-height: 430px;
+            max-height: 550px;
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-all;
@@ -23,7 +23,7 @@
             font-family: 'Consolas', monospace;
             font-size: 0.80rem;
             min-height: 280px;
-            max-height: 350px;
+            max-height: 360px;
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-all;
@@ -31,6 +31,16 @@
     </style>
 </head>
 <body class="bg-light">
+
+<!-- Toast Bildirim Alanı (Sağ Üst) -->
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100;">
+    <div id="liveToast" class="toast align-items-center text-bg-danger border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body" id="toastMessage">Bağlantı hatası oluştu.</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    </div>
+</div>
 
 <div class="container-fluid py-3">
     <!-- Üst Başlık & Mod Seçimi -->
@@ -58,7 +68,7 @@
         <div class="card-body py-2">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <span class="fw-bold small text-muted" id="serverSelectionTitle">Kayıtlı Sunucular (Seçim Yapın):</span>
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 align-items-center">
                     <button id="btnMultiFetchAll" class="btn btn-xs btn-outline-success d-none btn-sm py-0" onclick="fetchAllSelectedMultiLogs()">
                         Seçili Tüm Sunucuları Güncelle
                     </button>
@@ -69,7 +79,7 @@
         </div>
     </div>
 
-    <!-- TEK SUNUCU KONTROLLERİ (Tekil modda görünür) -->
+    <!-- TEK SUNUCU KONTROLLERİ -->
     <div id="singleModeControls">
         <!-- Dosya Explorer & Parametrik Uzantı Filtresi -->
         <div class="card shadow-sm mb-3">
@@ -86,7 +96,7 @@
                             </select>
                         </div>
                     </div>
-                    <div class="col-md-5">
+                    <div class="col-md-4">
                         <div class="input-group input-group-sm">
                             <span class="input-group-text fw-bold">Dizindeki Dosya:</span>
                             <select id="fileDropdown" class="form-select" disabled>
@@ -94,7 +104,12 @@
                             </select>
                         </div>
                     </div>
-                    <div class="col-md-4 d-flex gap-2 justify-content-end">
+                    <div class="col-md-5 d-flex gap-2 justify-content-end align-items-center">
+                        <!-- Otomatik Yenileme (Auto Refresh) Toggle -->
+                        <div class="form-check form-switch m-0 d-flex align-items-center gap-1">
+                            <input class="form-check-input" type="checkbox" id="autoRefreshToggle" onchange="toggleAutoRefresh(this.checked)">
+                            <label class="form-check-label small fw-bold text-muted" for="autoRefreshToggle">Oto-Yenile (3s)</label>
+                        </div>
                         <button id="btnReadSelectedFile" class="btn btn-sm btn-info text-white" onclick="fetchSelectedFile()" disabled>
                             Dosyayı Aç
                         </button>
@@ -135,7 +150,10 @@
                     <span id="selectedEnvBadge" class="badge bg-secondary">Sunucu Seçilmedi</span>
                     <span id="activeProcess" class="text-info small"></span>
                 </div>
-                <button class="btn btn-sm btn-outline-light" onclick="clearConsole()">Ekranı Temizle</button>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-success py-0" onclick="downloadLogFile()">Log İndir (.txt)</button>
+                    <button class="btn btn-sm btn-outline-light py-0" onclick="clearConsole()">Ekranı Temizle</button>
+                </div>
             </div>
             <div class="card-body p-0">
                 <pre id="outputConsole" class="console-box m-0 p-3">Lütfen yukarıdan bir sunucu seçip işlem başlatınız...</pre>
@@ -143,14 +161,16 @@
         </div>
     </div>
 
-    <!-- ÇOKLU SUNUCU KONSOL IZGARASI (Multi Mode Grid) -->
+    <!-- ÇOKLU SUNUCU KONSOL IZGARASI -->
     <div id="multiModeContainer" class="d-none">
-        <div class="alert alert-info py-2 small mb-3">
-            <strong>Çoklu Sunucu Modu:</strong> Yukarıdaki kutucuklardan aynı anda izlemek istediğiniz sunucuları seçebilirsiniz. Seçilen her sunucu için bağımsız canlı terminal açılacaktır.
+        <div class="d-flex justify-content-between align-items-center alert alert-info py-2 small mb-3">
+            <span><strong>Çoklu Sunucu Modu:</strong> Seçtiğiniz sunucuların bağımsız canlı terminalleri aşağıda listelenir.</span>
+            <div class="form-check form-switch m-0 d-flex align-items-center gap-1">
+                <input class="form-check-input" type="checkbox" id="multiAutoRefreshToggle" onchange="toggleMultiAutoRefresh(this.checked)">
+                <label class="form-check-label small fw-bold" for="multiAutoRefreshToggle">Tümünü Oto-Yenile (4s)</label>
+            </div>
         </div>
-        <div class="row g-3" id="multiConsoleGrid">
-            <!-- Dinamik Terminal Kartları -->
-        </div>
+        <div class="row g-3" id="multiConsoleGrid"></div>
     </div>
 </div>
 
@@ -211,10 +231,21 @@
     let allEnvironments = [];
     let currentEnvId = null;
     let rawLogContent = '';
-    let currentMode = 'single'; // 'single' veya 'multi'
+    let currentMode = 'single';
     let selectedMultiEnvIds = new Set();
+    let autoRefreshTimer = null;
+    let multiAutoRefreshTimer = null;
 
     document.addEventListener('DOMContentLoaded', loadEnvironments);
+
+    function showToast(msg, isError = true) {
+        const toastEl = document.getElementById('liveToast');
+        const toastMsg = document.getElementById('toastMessage');
+        toastEl.className = `toast align-items-center border-0 ${isError ? 'text-bg-danger' : 'text-bg-success'}`;
+        toastMsg.innerText = msg;
+        const toast = new bootstrap.Toast(toastEl, { delay: 4000 });
+        toast.show();
+    }
 
     async function loadEnvironments() {
         try {
@@ -223,7 +254,7 @@
             document.getElementById('serverCountBadge').innerText = allEnvironments.length + ' Sunucu';
             renderEnvironmentBar();
         } catch (err) {
-            console.error('Sunucular yüklenemedi:', err);
+            showToast('Sunucu listesi veritabanından çekilemedi!');
         }
     }
 
@@ -241,7 +272,6 @@
                 container.appendChild(btn);
             });
         } else {
-            // Multi mode: Checkbox'lar
             document.getElementById('btnMultiFetchAll').classList.remove('d-none');
             allEnvironments.forEach(env => {
                 const wrapper = document.createElement('div');
@@ -258,6 +288,11 @@
 
     function switchViewMode(mode) {
         currentMode = mode;
+        toggleAutoRefresh(false);
+        toggleMultiAutoRefresh(false);
+        document.getElementById('autoRefreshToggle').checked = false;
+        document.getElementById('multiAutoRefreshToggle').checked = false;
+
         renderEnvironmentBar();
 
         if (mode === 'single') {
@@ -315,11 +350,13 @@
     async function fetchSingleMultiLog(envId) {
         const consoleEl = document.getElementById(`multi_console_${envId}`);
         if (!consoleEl) return;
-        consoleEl.innerHTML = '<span class="text-secondary">Canlı log okunuyor...</span>';
 
         try {
             const res = await fetch(`/api/logs?envId=${envId}&lines=80`);
             const text = await res.text();
+            if (text.includes('[HATA]')) {
+                showToast(`[${envId}] Sunucuya bağlanılamadı!`);
+            }
             consoleEl.innerHTML = formatLogString(text);
         } catch (err) {
             consoleEl.innerHTML = `<span class="text-danger">[Hata]: ${err}</span>`;
@@ -328,6 +365,14 @@
 
     function fetchAllSelectedMultiLogs() {
         selectedMultiEnvIds.forEach(id => fetchSingleMultiLog(id));
+    }
+
+    function toggleMultiAutoRefresh(active) {
+        if (multiAutoRefreshTimer) clearInterval(multiAutoRefreshTimer);
+        if (active) {
+            multiAutoRefreshTimer = setInterval(fetchAllSelectedMultiLogs, 4000);
+            showToast('Çoklu izleme için otomatik yenileme başlatıldı (4 sn)', false);
+        }
     }
 
     // --- TEKİL MOD İŞLEVLERİ ---
@@ -370,12 +415,13 @@
             document.getElementById('btnReadSelectedFile').disabled = false;
         } catch (err) {
             dropdown.innerHTML = '<option value="">Dosyalar listelenemedi</option>';
+            showToast('Dizindeki dosyalar listelenirken hata oluştu.');
         }
     }
 
     async function triggerServerGrep(level) {
         if (!currentEnvId) {
-            alert('Lütfen önce bir sunucu seçiniz!');
+            showToast('Lütfen önce bir sunucu seçiniz!');
             return;
         }
         const fileName = document.getElementById('fileDropdown').value;
@@ -391,13 +437,14 @@
             document.getElementById('activeProcess').innerText = `Grep tamamlandı (${new Date().toLocaleTimeString()})`;
         } catch (err) {
             document.getElementById('outputConsole').innerHTML = `<span class="text-danger">[Hata]: ${err}</span>`;
+            showToast('Grep işlemi sırasında hata oluştu.');
         }
     }
 
     async function fetchSelectedFile() {
         const fileName = document.getElementById('fileDropdown').value;
         if (!currentEnvId || !fileName || fileName === 'ALL') {
-            alert('Lütfen okunacak spesifik bir dosya seçiniz!');
+            showToast('Lütfen okunacak spesifik bir dosya seçiniz!');
             return;
         }
 
@@ -409,6 +456,7 @@
             document.getElementById('activeProcess').innerText = `${fileName} yüklendi (${new Date().toLocaleTimeString()})`;
         } catch (err) {
             document.getElementById('outputConsole').innerHTML = `<span class="text-danger">[Hata]: ${err}</span>`;
+            showToast('SFTP dosya indirme hatası!');
         }
     }
 
@@ -419,11 +467,44 @@
         try {
             const res = await fetch(`/api/logs?envId=${currentEnvId}&lines=100`);
             rawLogContent = await res.text();
+            if (rawLogContent.includes('[HATA]')) {
+                showToast('Sunucu bağlantı hatası!');
+            }
             document.getElementById('outputConsole').innerHTML = formatLogString(rawLogContent);
             document.getElementById('activeProcess').innerText = `Canlı log güncellendi (${new Date().toLocaleTimeString()})`;
         } catch (err) {
             document.getElementById('outputConsole').innerHTML = `<span class="text-danger">[Hata]: ${err}</span>`;
+            showToast('Log çekilemedi!');
         }
+    }
+
+    function toggleAutoRefresh(active) {
+        if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+        if (active) {
+            if (!currentEnvId) {
+                showToast('Lütfen önce bir sunucu seçiniz!');
+                document.getElementById('autoRefreshToggle').checked = false;
+                return;
+            }
+            autoRefreshTimer = setInterval(fetchTailLogs, 3000);
+            showToast('Otomatik log yenileme aktif (3 sn)', false);
+        }
+    }
+
+    function downloadLogFile() {
+        if (!rawLogContent) {
+            showToast('İndirilecek herhangi bir log kaydı bulunmuyor!');
+            return;
+        }
+        const blob = new Blob([rawLogContent], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `server_log_${new Date().toISOString().slice(0,19).replace(/[:T]/g, '_')}.log`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     }
 
     function formatLogString(text) {
@@ -469,7 +550,7 @@
         };
 
         if (!envData.name || !envData.host) {
-            alert('Lütfen Sunucu Adı ve Host alanlarını doldurun!');
+            showToast('Lütfen Sunucu Adı ve Host alanlarını doldurun!');
             return;
         }
 
@@ -484,9 +565,10 @@
                 bootstrap.Modal.getInstance(document.getElementById('addEnvModal')).hide();
                 document.getElementById('addEnvForm').reset();
                 loadEnvironments();
+                showToast('Yeni sunucu başarıyla kaydedildi!', false);
             }
         } catch (err) {
-            alert('Hata: ' + err);
+            showToast('Sunucu kaydedilemedi: ' + err);
         }
     }
 
