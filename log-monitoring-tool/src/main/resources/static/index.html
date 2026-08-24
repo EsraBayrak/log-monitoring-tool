@@ -6,13 +6,25 @@
     <title>Oracle & SSH Log Monitoring Tool</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
+        .metric-card {
+            border-radius: 8px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .metric-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
         .console-box {
             background-color: #0b0f19;
             color: #d4d4d4;
             font-family: 'Consolas', monospace;
             font-size: 0.85rem;
-            min-height: 430px;
-            max-height: 550px;
+            min-height: 400px;
+            max-height: 520px;
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-all;
@@ -27,6 +39,20 @@
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-all;
+        }
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 380px;
+            color: #6c757d;
+        }
+        .empty-state svg {
+            width: 48px;
+            height: 48px;
+            margin-bottom: 12px;
+            opacity: 0.6;
         }
     </style>
 </head>
@@ -60,6 +86,46 @@
             <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addEnvModal">
                 + Yeni Sunucu Ekle
             </button>
+        </div>
+    </div>
+
+    <!-- DASHBOARD METRİK KARTLARI -->
+    <div class="row g-2 mb-3">
+        <div class="col-md-2 col-6">
+            <div class="card metric-card bg-white border-0 shadow-sm p-2 text-center">
+                <span class="text-muted small fw-bold">Sunucular</span>
+                <span class="metric-value text-primary" id="statServerCount">0</span>
+            </div>
+        </div>
+        <div class="col-md-2 col-6">
+            <div class="card metric-card bg-white border-0 shadow-sm p-2 text-center">
+                <span class="text-muted small fw-bold">Taranan Satır</span>
+                <span class="metric-value text-secondary" id="statTotalLines">0</span>
+            </div>
+        </div>
+        <div class="col-md-2 col-6">
+            <div class="card metric-card bg-white border-0 shadow-sm p-2 text-center">
+                <span class="text-danger small fw-bold">Hata (ERROR)</span>
+                <span class="metric-value text-danger" id="statErrorCount">0</span>
+            </div>
+        </div>
+        <div class="col-md-2 col-6">
+            <div class="card metric-card bg-white border-0 shadow-sm p-2 text-center">
+                <span class="text-warning small fw-bold">Uyarı (WARN)</span>
+                <span class="metric-value text-warning" id="statWarnCount">0</span>
+            </div>
+        </div>
+        <div class="col-md-2 col-6">
+            <div class="card metric-card bg-white border-0 shadow-sm p-2 text-center">
+                <span class="text-success small fw-bold">Bilgi (INFO)</span>
+                <span class="metric-value text-success" id="statInfoCount">0</span>
+            </div>
+        </div>
+        <div class="col-md-2 col-6">
+            <div class="card metric-card bg-white border-0 shadow-sm p-2 text-center">
+                <span class="text-muted small fw-bold">Bağlantı Durumu</span>
+                <span class="metric-value small pt-1 text-muted" id="statServerStatus">Hazır</span>
+            </div>
         </div>
     </div>
 
@@ -105,7 +171,6 @@
                         </div>
                     </div>
                     <div class="col-md-5 d-flex gap-2 justify-content-end align-items-center">
-                        <!-- Otomatik Yenileme (Auto Refresh) Toggle -->
                         <div class="form-check form-switch m-0 d-flex align-items-center gap-1">
                             <input class="form-check-input" type="checkbox" id="autoRefreshToggle" onchange="toggleAutoRefresh(this.checked)">
                             <label class="form-check-label small fw-bold text-muted" for="autoRefreshToggle">Oto-Yenile (3s)</label>
@@ -156,7 +221,14 @@
                 </div>
             </div>
             <div class="card-body p-0">
-                <pre id="outputConsole" class="console-box m-0 p-3">Lütfen yukarıdan bir sunucu seçip işlem başlatınız...</pre>
+                <div id="emptyStateBox" class="empty-state">
+                    <svg fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-12-3h8v2H8v-2zm0-4h8v2H8v-2z"/>
+                    </svg>
+                    <p class="mb-0 fw-bold">Canlı Log İzlemeye Başlayın</p>
+                    <span class="small">Lütfen yukarıdaki menüden bir sunucu seçiniz.</span>
+                </div>
+                <pre id="outputConsole" class="console-box m-0 p-3 d-none"></pre>
             </div>
         </div>
     </div>
@@ -252,6 +324,7 @@
             const res = await fetch('/api/environments');
             allEnvironments = await res.json();
             document.getElementById('serverCountBadge').innerText = allEnvironments.length + ' Sunucu';
+            document.getElementById('statServerCount').innerText = allEnvironments.length;
             renderEnvironmentBar();
         } catch (err) {
             showToast('Sunucu listesi veritabanından çekilemedi!');
@@ -375,7 +448,23 @@
         }
     }
 
-    // --- TEKİL MOD İŞLEVLERİ ---
+    // --- TEKİL MOD İŞLEVLERİ & STATS GÜNCELLEME ---
+    async function updateDashboardStats(envId) {
+        try {
+            const res = await fetch(`/api/stats?envId=${envId}&lines=200`);
+            if (res.ok) {
+                const stats = await res.json();
+                document.getElementById('statTotalLines').innerText = stats.totalLines || '0';
+                document.getElementById('statErrorCount').innerText = stats.errorCount || '0';
+                document.getElementById('statWarnCount').innerText = stats.warnCount || '0';
+                document.getElementById('statInfoCount').innerText = stats.infoCount || '0';
+                document.getElementById('statServerStatus').innerHTML = '<span class="badge bg-success">Online</span>';
+            }
+        } catch (err) {
+            document.getElementById('statServerStatus').innerHTML = '<span class="badge bg-danger">Offline</span>';
+        }
+    }
+
     async function selectEnvironment(id, name, targetBtn) {
         currentEnvId = id;
         document.getElementById('selectedEnvBadge').className = 'badge bg-primary';
@@ -389,6 +478,7 @@
         targetBtn.classList.remove('btn-outline-primary');
         targetBtn.classList.add('btn-primary');
 
+        updateDashboardStats(id);
         await reloadFileList();
     }
 
@@ -433,9 +523,12 @@
             const url = `/api/search-grep?envId=${currentEnvId}&fileName=${encodeURIComponent(fileName)}&level=${encodeURIComponent(level)}&keyword=${encodeURIComponent(keyword)}&lineLimit=200`;
             const res = await fetch(url);
             rawLogContent = await res.text();
+            showConsole();
             document.getElementById('outputConsole').innerHTML = formatLogString(rawLogContent);
             document.getElementById('activeProcess').innerText = `Grep tamamlandı (${new Date().toLocaleTimeString()})`;
+            updateDashboardStats(currentEnvId);
         } catch (err) {
+            showConsole();
             document.getElementById('outputConsole').innerHTML = `<span class="text-danger">[Hata]: ${err}</span>`;
             showToast('Grep işlemi sırasında hata oluştu.');
         }
@@ -452,9 +545,12 @@
         try {
             const res = await fetch(`/api/file-content?envId=${currentEnvId}&fileName=${encodeURIComponent(fileName)}`);
             rawLogContent = await res.text();
+            showConsole();
             document.getElementById('outputConsole').innerHTML = formatLogString(rawLogContent);
             document.getElementById('activeProcess').innerText = `${fileName} yüklendi (${new Date().toLocaleTimeString()})`;
+            updateDashboardStats(currentEnvId);
         } catch (err) {
+            showConsole();
             document.getElementById('outputConsole').innerHTML = `<span class="text-danger">[Hata]: ${err}</span>`;
             showToast('SFTP dosya indirme hatası!');
         }
@@ -470,9 +566,12 @@
             if (rawLogContent.includes('[HATA]')) {
                 showToast('Sunucu bağlantı hatası!');
             }
+            showConsole();
             document.getElementById('outputConsole').innerHTML = formatLogString(rawLogContent);
             document.getElementById('activeProcess').innerText = `Canlı log güncellendi (${new Date().toLocaleTimeString()})`;
+            updateDashboardStats(currentEnvId);
         } catch (err) {
+            showConsole();
             document.getElementById('outputConsole').innerHTML = `<span class="text-danger">[Hata]: ${err}</span>`;
             showToast('Log çekilemedi!');
         }
@@ -507,12 +606,17 @@
         URL.revokeObjectURL(url);
     }
 
+    function showConsole() {
+        document.getElementById('emptyStateBox').classList.add('d-none');
+        document.getElementById('outputConsole').classList.remove('d-none');
+    }
+
     function formatLogString(text) {
         if (!text) return '';
         return text.split('\n').map(line => {
             const up = line.toUpperCase();
-            if (up.includes('ERROR') || up.includes('EXCEPTION') || up.includes('[HATA]')) {
-                return `<span style="color: #ff6b6b;">${escapeHtml(line)}</span>`;
+            if (up.includes('ERROR') || up.includes('EXCEPTION') || up.includes('[HATA]') || up.includes('FATAL')) {
+                return `<span style="color: #ff6b6b; font-weight: 500;">${escapeHtml(line)}</span>`;
             } else if (up.includes('WARN')) {
                 return `<span style="color: #feca57;">${escapeHtml(line)}</span>`;
             } else if (up.includes('INFO')) {
@@ -529,12 +633,14 @@
 
     function clearConsole() {
         rawLogContent = '';
-        document.getElementById('outputConsole').innerText = '';
+        document.getElementById('outputConsole').classList.add('d-none');
+        document.getElementById('emptyStateBox').classList.remove('d-none');
         document.getElementById('activeProcess').innerText = '';
     }
 
     function setConsoleStatus(status, text) {
         document.getElementById('activeProcess').innerText = status;
+        showConsole();
         document.getElementById('outputConsole').innerHTML = `<span class="text-secondary">${text}</span>`;
     }
 

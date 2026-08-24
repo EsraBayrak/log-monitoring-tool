@@ -1,9 +1,9 @@
 package com.logmonitoring.tool.controller;
 
+import com.logmonitoring.tool.dto.LogStatsDto;
 import com.logmonitoring.tool.model.ServerEnvironment;
 import com.logmonitoring.tool.repository.ServerEnvironmentRepository;
-import com.logmonitoring.tool.service.LogReaderService;
-import lombok.RequiredArgsConstructor;
+import com.logmonitoring.tool.service.LogService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -11,28 +11,49 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api")
-@RequiredArgsConstructor
 @CrossOrigin(origins = "*")
 public class LogController {
 
-    private final ServerEnvironmentRepository envRepository;
-    private final LogReaderService logReaderService;
+    private final ServerEnvironmentRepository environmentRepository;
+    private final LogService logService;
+
+    public LogController(ServerEnvironmentRepository environmentRepository, LogService logService) {
+        this.environmentRepository = environmentRepository;
+        this.logService = logService;
+    }
 
     @GetMapping("/environments")
-    public List<ServerEnvironment> getEnvironments() {
-        return envRepository.findAll();
+    public ResponseEntity<List<ServerEnvironment>> getAllEnvironments() {
+        return ResponseEntity.ok(environmentRepository.findAll());
     }
 
     @PostMapping("/environments")
-    public ServerEnvironment addEnvironment(@RequestBody ServerEnvironment env) {
-        return envRepository.save(env);
+    public ResponseEntity<ServerEnvironment> addEnvironment(@RequestBody ServerEnvironment environment) {
+        return ResponseEntity.ok(environmentRepository.save(environment));
     }
 
     @GetMapping("/logs")
-    public ResponseEntity<String> getLogs(@RequestParam Long envId, @RequestParam(defaultValue = "100") int lines) {
-        return envRepository.findById(envId)
-                .map(env -> ResponseEntity.ok(logReaderService.readLogFile(env, lines)))
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<String> getTailLogs(
+            @RequestParam Long envId,
+            @RequestParam(defaultValue = "100") int lines) {
+        String result = logService.fetchTailLogs(envId, lines);
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/files")
+    public ResponseEntity<List<String>> listFiles(
+            @RequestParam Long envId,
+            @RequestParam(defaultValue = "ALL") String extension) {
+        List<String> files = logService.listFilesInDirectory(envId, extension);
+        return ResponseEntity.ok(files);
+    }
+
+    @GetMapping("/file-content")
+    public ResponseEntity<String> getFileContent(
+            @RequestParam Long envId,
+            @RequestParam String fileName) {
+        String content = logService.fetchFileContent(envId, fileName);
+        return ResponseEntity.ok(content);
     }
 
     @GetMapping("/search-grep")
@@ -42,24 +63,15 @@ public class LogController {
             @RequestParam(required = false) String level,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "200") int lineLimit) {
-        return envRepository.findById(envId)
-                .map(env -> ResponseEntity.ok(logReaderService.searchLogsWithGrep(env, fileName, level, keyword, lineLimit)))
-                .orElse(ResponseEntity.notFound().build());
+        String results = logService.searchLogsWithGrep(envId, fileName, level, keyword, lineLimit);
+        return ResponseEntity.ok(results);
     }
 
-    @GetMapping("/file-content")
-    public ResponseEntity<String> getFileContent(@RequestParam Long envId, @RequestParam String fileName) {
-        return envRepository.findById(envId)
-                .map(env -> ResponseEntity.ok(logReaderService.readSpecificFile(env, fileName)))
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    @GetMapping("/files")
-    public ResponseEntity<List<String>> listFiles(
+    @GetMapping("/stats")
+    public ResponseEntity<LogStatsDto> getLogStats(
             @RequestParam Long envId,
-            @RequestParam(defaultValue = "ALL") String extension) {
-        return envRepository.findById(envId)
-                .map(env -> ResponseEntity.ok(logReaderService.listFilesInDirectory(env, extension)))
-                .orElse(ResponseEntity.notFound().build());
+            @RequestParam(defaultValue = "200") int lines) {
+        LogStatsDto stats = logService.analyzeLogStats(envId, lines);
+        return ResponseEntity.ok(stats);
     }
 }
