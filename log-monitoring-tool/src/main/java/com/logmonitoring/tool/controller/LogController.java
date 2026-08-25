@@ -74,4 +74,10 @@ public class LogController {
         LogStatsDto stats = logService.analyzeLogStats(envId, lines);
         return ResponseEntity.ok(stats);
     }
+    
+    @GetMapping("/health")
+    public ResponseEntity<Boolean> checkHealth(@RequestParam Long envId) {
+        boolean isAlive = logService.checkServerHealth(envId);
+        return ResponseEntity.ok(isAlive);
+    }
 }

@@ -13,6 +13,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Vector;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 
 @Service
 public class LogService {
@@ -179,5 +181,18 @@ public class LogService {
         session.setPassword(env.getPassword());
         session.setConfig("StrictHostKeyChecking", "no");
         return session;
+    }
+    public boolean checkServerHealth(Long envId) {
+        ServerEnvironment env = environmentRepository.findById(envId).orElse(null);
+        if (env == null || env.getHost() == null) {
+            return false;
+        }
+
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(env.getHost(), env.getPort()), 3000);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 }

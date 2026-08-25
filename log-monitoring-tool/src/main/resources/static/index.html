@@ -14,6 +14,9 @@
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
         }
+        .metric-card-clickable {
+            cursor: pointer;
+        }
         .metric-value {
             font-size: 1.5rem;
             font-weight: 700;
@@ -53,6 +56,16 @@
             height: 48px;
             margin-bottom: 12px;
             opacity: 0.6;
+        }
+        .error-log-item {
+            background-color: #fdf2f2;
+            border-left: 4px solid #dc3545;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            font-family: 'Consolas', monospace;
+            font-size: 0.85rem;
+            color: #b02a37;
+            word-break: break-all;
         }
     </style>
 </head>
@@ -104,8 +117,8 @@
             </div>
         </div>
         <div class="col-md-2 col-6">
-            <div class="card metric-card bg-white border-0 shadow-sm p-2 text-center">
-                <span class="text-danger small fw-bold">Hata (ERROR)</span>
+            <div class="card metric-card metric-card-clickable bg-white border-0 shadow-sm p-2 text-center border-bottom border-danger border-3" onclick="openErrorDetailsModal()" title="Hata detaylarını görmek için tıklayın">
+                <span class="text-danger small fw-bold">Hata (ERROR) 🔍</span>
                 <span class="metric-value text-danger" id="statErrorCount">0</span>
             </div>
         </div>
@@ -135,7 +148,10 @@
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <span class="fw-bold small text-muted" id="serverSelectionTitle">Kayıtlı Sunucular (Seçim Yapın):</span>
                 <div class="d-flex gap-2 align-items-center">
-                    <button id="btnMultiFetchAll" class="btn btn-xs btn-outline-success d-none btn-sm py-0" onclick="fetchAllSelectedMultiLogs()">
+                    <button id="btnHealthCheck" class="btn btn-outline-secondary btn-sm py-0" onclick="checkSelectedServerHealth()" disabled>
+                        ⚡ Bağlantıyı Test Et
+                    </button>
+                    <button id="btnMultiFetchAll" class="btn btn-outline-success d-none btn-sm py-0" onclick="fetchAllSelectedMultiLogs()">
                         Seçili Tüm Sunucuları Güncelle
                     </button>
                     <span id="serverCountBadge" class="badge bg-secondary small">0 Sunucu</span>
@@ -246,7 +262,7 @@
     </div>
 </div>
 
-<!-- Modal: Yeni Sunucu Tanımla -->
+<!-- Modal 1: Yeni Sunucu Tanımla -->
 <div class="modal fade" id="addEnvModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -298,6 +314,27 @@
     </div>
 </div>
 
+<!-- Modal 2: Kritik Hata Detayları Modalı -->
+<div class="modal fade" id="errorDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white py-2">
+                <h6 class="modal-title fw-bold">🚨 Son Tespit Edilen Kritik Hatalar (Exception Inspector)</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2 text-muted small">Sunucu loglarında yakalanan son kritik hata kayıtları:</div>
+                <div id="errorDetailsList">
+                    <div class="text-center text-muted py-3">Henüz bir hata kaydı yakalanmadı veya sunucu seçilmedi.</div>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Kapat</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     let allEnvironments = [];
@@ -307,6 +344,7 @@
     let selectedMultiEnvIds = new Set();
     let autoRefreshTimer = null;
     let multiAutoRefreshTimer = null;
+    let currentRecentErrors = [];
 
     document.addEventListener('DOMContentLoaded', loadEnvironments);
 
@@ -458,11 +496,46 @@
                 document.getElementById('statErrorCount').innerText = stats.errorCount || '0';
                 document.getElementById('statWarnCount').innerText = stats.warnCount || '0';
                 document.getElementById('statInfoCount').innerText = stats.infoCount || '0';
-                document.getElementById('statServerStatus').innerHTML = '<span class="badge bg-success">Online</span>';
+                currentRecentErrors = stats.recentErrors || [];
             }
         } catch (err) {
-            document.getElementById('statServerStatus').innerHTML = '<span class="badge bg-danger">Offline</span>';
+            console.error(err);
         }
+    }
+
+    async function checkSelectedServerHealth() {
+        if (!currentEnvId) return;
+        const statusEl = document.getElementById('statServerStatus');
+        statusEl.innerHTML = '<span class="spinner-border spinner-border-sm text-secondary"></span>';
+
+        try {
+            const res = await fetch(`/api/health?envId=${currentEnvId}`);
+            const isAlive = await res.json();
+            if (isAlive) {
+                statusEl.innerHTML = '<span class="badge bg-success">Online (Aktif)</span>';
+                showToast('Sunucu bağlantı testi başarılı (Port 22 erişilebilir)', false);
+            } else {
+                statusEl.innerHTML = '<span class="badge bg-danger">Offline</span>';
+                showToast('Sunucuya ulaşılamıyor (Port kapalı veya IP geçersiz)');
+            }
+        } catch (err) {
+            statusEl.innerHTML = '<span class="badge bg-danger">Offline</span>';
+            showToast('Sunucu bağlantı testi başarısız!');
+        }
+    }
+
+    function openErrorDetailsModal() {
+        const container = document.getElementById('errorDetailsList');
+        if (!currentRecentErrors || currentRecentErrors.length === 0) {
+            container.innerHTML = '<div class="alert alert-success text-center mb-0">Taranan log kayıtlarında herhangi bir ERROR veya EXCEPTION tespit edilmedi.</div>';
+        } else {
+            container.innerHTML = currentRecentErrors.map((err, i) => `
+                <div class="error-log-item">
+                    <strong>#${i + 1}:</strong> ${escapeHtml(err)}
+                </div>
+            `).join('');
+        }
+        new bootstrap.Modal(document.getElementById('errorDetailsModal')).show();
     }
 
     async function selectEnvironment(id, name, targetBtn) {
@@ -470,6 +543,7 @@
         document.getElementById('selectedEnvBadge').className = 'badge bg-primary';
         document.getElementById('selectedEnvBadge').innerText = 'Seçili: ' + name;
         document.getElementById('btnFetchLogs').disabled = false;
+        document.getElementById('btnHealthCheck').disabled = false;
 
         document.querySelectorAll('.env-btn').forEach(b => {
             b.classList.remove('btn-primary');
@@ -478,6 +552,7 @@
         targetBtn.classList.remove('btn-outline-primary');
         targetBtn.classList.add('btn-primary');
 
+        checkSelectedServerHealth();
         updateDashboardStats(id);
         await reloadFileList();
     }
