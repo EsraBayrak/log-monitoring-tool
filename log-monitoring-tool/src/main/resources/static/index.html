@@ -67,6 +67,14 @@
             color: #b02a37;
             word-break: break-all;
         }
+        .quick-tag {
+            cursor: pointer;
+            transition: all 0.15s ease-in-out;
+        }
+        .quick-tag:hover {
+            opacity: 0.85;
+            transform: scale(1.05);
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -89,6 +97,9 @@
             <p class="text-muted mb-0 small">Java 21 • Spring Boot • Oracle DB • Linux SSH/Grep • Multi-Server Stream</p>
         </div>
         <div class="d-flex gap-2">
+            <a href="/swagger-ui/index.html" target="_blank" class="btn btn-outline-dark btn-sm">
+                📖 Swagger API Docs
+            </a>
             <div class="btn-group btn-group-sm" role="group">
                 <input type="radio" class="btn-check" name="viewMode" id="singleModeRadio" checked onchange="switchViewMode('single')">
                 <label class="btn btn-outline-secondary" for="singleModeRadio">Tek Sunucu Modu</label>
@@ -103,7 +114,7 @@
     </div>
 
     <!-- DASHBOARD METRİK KARTLARI -->
-    <div class="row g-2 mb-3">
+    <div class="row g-2 mb-2">
         <div class="col-md-2 col-6">
             <div class="card metric-card bg-white border-0 shadow-sm p-2 text-center">
                 <span class="text-muted small fw-bold">Sunucular</span>
@@ -140,6 +151,13 @@
                 <span class="metric-value small pt-1 text-muted" id="statServerStatus">Hazır</span>
             </div>
         </div>
+    </div>
+
+    <!-- Dağılım Çubuğu (Log Level Distribution Bar) -->
+    <div class="progress mb-3 shadow-sm" style="height: 6px;" id="logDistributionProgress">
+        <div class="progress-bar bg-danger" id="barError" role="progressbar" style="width: 0%"></div>
+        <div class="progress-bar bg-warning" id="barWarn" role="progressbar" style="width: 0%"></div>
+        <div class="progress-bar bg-success" id="barInfo" role="progressbar" style="width: 0%"></div>
     </div>
 
     <!-- Sunucu Havuzu -->
@@ -202,10 +220,10 @@
             </div>
         </div>
 
-        <!-- Linux Grep & Seviye Filtreleme Barı -->
+        <!-- Linux Grep & Hızlı Etiket Filtreleme Barı -->
         <div class="card shadow-sm mb-3">
             <div class="card-body py-2 bg-white">
-                <div class="row g-2 align-items-center">
+                <div class="row g-2 align-items-center mb-2">
                     <div class="col-md-5">
                         <div class="input-group input-group-sm">
                             <span class="input-group-text">Linux Grep:</span>
@@ -220,6 +238,15 @@
                         <button class="btn btn-sm btn-dark" onclick="triggerServerGrep('')">Grep Ara</button>
                         <button class="btn btn-sm btn-outline-secondary" onclick="clearFilters()">Temizle</button>
                     </div>
+                </div>
+                <!-- Hızlı Arama Etiketleri (Quick Tags) -->
+                <div class="d-flex align-items-center gap-2 pt-1 border-top">
+                    <span class="small text-muted fw-bold">Hızlı Etiketler:</span>
+                    <span class="badge bg-light text-dark border quick-tag" onclick="applyQuickTag('Exception')">⚡ Exception</span>
+                    <span class="badge bg-light text-dark border quick-tag" onclick="applyQuickTag('SOAP')">📡 SOAP</span>
+                    <span class="badge bg-light text-dark border quick-tag" onclick="applyQuickTag('Timeout')">⏱️ Timeout</span>
+                    <span class="badge bg-light text-dark border quick-tag" onclick="applyQuickTag('SQLException')">💾 SQLException</span>
+                    <span class="badge bg-light text-dark border quick-tag" onclick="applyQuickTag('NullPointer')">🎯 NullPointer</span>
                 </div>
             </div>
         </div>
@@ -492,11 +519,26 @@
             const res = await fetch(`/api/stats?envId=${envId}&lines=200`);
             if (res.ok) {
                 const stats = await res.json();
+                const err = stats.errorCount || 0;
+                const warn = stats.warnCount || 0;
+                const info = stats.infoCount || 0;
+                const total = err + warn + info;
+
                 document.getElementById('statTotalLines').innerText = stats.totalLines || '0';
-                document.getElementById('statErrorCount').innerText = stats.errorCount || '0';
-                document.getElementById('statWarnCount').innerText = stats.warnCount || '0';
-                document.getElementById('statInfoCount').innerText = stats.infoCount || '0';
+                document.getElementById('statErrorCount').innerText = err;
+                document.getElementById('statWarnCount').innerText = warn;
+                document.getElementById('statInfoCount').innerText = info;
                 currentRecentErrors = stats.recentErrors || [];
+
+                if (total > 0) {
+                    document.getElementById('barError').style.width = (err / total * 100) + '%';
+                    document.getElementById('barWarn').style.width = (warn / total * 100) + '%';
+                    document.getElementById('barInfo').style.width = (info / total * 100) + '%';
+                } else {
+                    document.getElementById('barError').style.width = '0%';
+                    document.getElementById('barWarn').style.width = '0%';
+                    document.getElementById('barInfo').style.width = '0%';
+                }
             }
         } catch (err) {
             console.error(err);
@@ -536,6 +578,11 @@
             `).join('');
         }
         new bootstrap.Modal(document.getElementById('errorDetailsModal')).show();
+    }
+
+    function applyQuickTag(tag) {
+        document.getElementById('keywordInput').value = tag;
+        triggerServerGrep('');
     }
 
     async function selectEnvironment(id, name, targetBtn) {
