@@ -6,6 +6,8 @@ import com.logmonitoring.tool.repository.ServerEnvironmentRepository;
 import com.logmonitoring.tool.service.LogService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.http.MediaType;
 
 import java.util.List;
 
@@ -79,5 +81,10 @@ public class LogController {
     public ResponseEntity<Boolean> checkHealth(@RequestParam Long envId) {
         boolean isAlive = logService.checkServerHealth(envId);
         return ResponseEntity.ok(isAlive);
+    }
+
+    @GetMapping(value = "/logs/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamLogs(@RequestParam Long envId) {
+        return logService.streamLiveLogs(envId);
     }
 }

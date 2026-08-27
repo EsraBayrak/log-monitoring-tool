@@ -4,25 +4,32 @@ import com.jcraft.jsch.*;
 import com.logmonitoring.tool.dto.LogStatsDto;
 import com.logmonitoring.tool.model.ServerEnvironment;
 import com.logmonitoring.tool.repository.ServerEnvironmentRepository;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Vector;
-import java.net.InetSocketAddress;
-import java.net.Socket;
+import java.util.concurrent.Executor;
 
 @Service
 public class LogService {
 
     private final ServerEnvironmentRepository environmentRepository;
+    private final Executor logStreamExecutor;
 
-    public LogService(ServerEnvironmentRepository environmentRepository) {
+    public LogService(ServerEnvironmentRepository environmentRepository, 
+                      @Qualifier("logStreamExecutor") Executor logStreamExecutor) {
         this.environmentRepository = environmentRepository;
+        this.logStreamExecutor = logStreamExecutor;
     }
 
     public String fetchTailLogs(Long envId, int lines) {
@@ -141,6 +148,79 @@ public class LogService {
         return new LogStatsDto(logLines.length, errors, warns, infos, recentErrors);
     }
 
+    public boolean checkServerHealth(Long envId) {
+        ServerEnvironment env = environmentRepository.findById(envId).orElse(null);
+        if (env == null || env.getHost() == null) {
+            return false;
+        }
+
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(env.getHost(), env.getPort()), 3000);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public SseEmitter streamLiveLogs(Long envId) {
+        SseEmitter emitter = new SseEmitter(1800000L); // 30 dakikalık canlı yayın kanalı
+        ServerEnvironment env = environmentRepository.findById(envId).orElse(null);
+
+        if (env == null) {
+            try {
+                emitter.send(SseEmitter.event().name("error").data("[HATA] Sunucu tanımı bulunamadı (ID: " + envId + ")"));
+                emitter.complete();
+            } catch (IOException ignored) {}
+            return emitter;
+        }
+
+        logStreamExecutor.execute(() -> {
+            Session session = null;
+            ChannelExec channel = null;
+            BufferedReader reader = null;
+            try {
+                session = createSshSession(env);
+                session.connect(8000);
+
+                channel = (ChannelExec) session.openChannel("exec");
+                channel.setCommand("tail -f -n 25 " + env.getLogFilePath());
+                channel.setInputStream(null);
+                
+                InputStream in = channel.getInputStream();
+                channel.connect(8000);
+
+                reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+                String line;
+
+                while ((line = reader.readLine()) != null) {
+                    try {
+                        emitter.send(SseEmitter.event().name("log").data(line));
+                    } catch (Exception clientDisconnected) {
+                        break; 
+                    }
+                }
+                emitter.complete();
+            } catch (Exception e) {
+                try {
+                    emitter.send(SseEmitter.event().name("error").data("[BAĞLANTI HATASI]: " + e.getMessage()));
+                } catch (IOException ignored) {}
+                emitter.completeWithError(e);
+            } finally {
+                try {
+                    if (reader != null) reader.close();
+                    if (channel != null && channel.isConnected()) channel.disconnect();
+                    if (session != null && session.isConnected()) session.disconnect();
+                } catch (Exception ignored) {}
+            }
+        });
+
+        emitter.onCompletion(() -> {});
+        emitter.onTimeout(emitter::complete);
+        emitter.onError((e) -> emitter.complete());
+
+        return emitter;
+    }
+
     private String executeSshCommand(ServerEnvironment env, String command) {
         Session session = null;
         ChannelExec channel = null;
@@ -181,18 +261,5 @@ public class LogService {
         session.setPassword(env.getPassword());
         session.setConfig("StrictHostKeyChecking", "no");
         return session;
-    }
-    public boolean checkServerHealth(Long envId) {
-        ServerEnvironment env = environmentRepository.findById(envId).orElse(null);
-        if (env == null || env.getHost() == null) {
-            return false;
-        }
-
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(env.getHost(), env.getPort()), 3000);
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
     }
 }
