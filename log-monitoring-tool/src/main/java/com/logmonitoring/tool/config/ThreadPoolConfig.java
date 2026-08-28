@@ -12,10 +12,15 @@ public class ThreadPoolConfig {
     @Bean(name = "logStreamExecutor")
     public Executor logStreamExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(10);       // 10 eşzamanlı sunucu stream'i
-        executor.setMaxPoolSize(20);        // Yoğunlukta 20 thread'e kadar çıkabilir
+        executor.setCorePoolSize(10);
+        executor.setMaxPoolSize(20);
         executor.setQueueCapacity(50);
         executor.setThreadNamePrefix("LogStream-");
+        
+        // Uygulama kapanırken aktif stream ve thread'leri güvenle sonlandırır
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(20);
+        
         executor.initialize();
         return executor;
     }

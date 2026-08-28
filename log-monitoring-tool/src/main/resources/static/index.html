@@ -102,6 +102,10 @@
             50% { transform: scale(1.3); opacity: 1; }
             100% { transform: scale(0.9); opacity: 0.7; }
         }
+        .server-chip-group {
+            display: inline-flex;
+            align-items: center;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -121,7 +125,7 @@
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <h3 class="fw-bold mb-0 text-dark">Sunucu Log & Konfigürasyon İzleme</h3>
-            <p class="text-muted mb-0 small">Java 21 • Spring Boot • Oracle DB • SSE Stream • Linux SSH/Grep • Multi-Server Concurrent</p>
+            <p class="text-muted mb-0 small">Java 21 • Spring Boot • Oracle DB • SSE Stream • Centralized Error Handling • Multi-Server CRUD</p>
         </div>
         <div class="d-flex gap-2">
             <a href="/swagger-ui/index.html" target="_blank" class="btn btn-outline-dark btn-sm">
@@ -187,12 +191,18 @@
         <div class="progress-bar bg-success" id="barInfo" role="progressbar" style="width: 0%"></div>
     </div>
 
-    <!-- Sunucu Havuzu -->
+    <!-- Sunucu Havuzu & Yönetim -->
     <div class="card shadow-sm mb-3">
         <div class="card-body py-2">
             <div class="d-flex justify-content-between align-items-center mb-2">
-                <span class="fw-bold small text-muted" id="serverSelectionTitle">Kayıtlı Sunucular (Seçim Yapın):</span>
+                <span class="fw-bold small text-muted" id="serverSelectionTitle">Kayıtlı Sunucular (Seçim & Yönetim):</span>
                 <div class="d-flex gap-2 align-items-center">
+                    <button id="btnEditSelectedServer" class="btn btn-outline-primary btn-sm py-0" onclick="openEditModalForSelected()" disabled>
+                        ✏️ Düzenle
+                    </button>
+                    <button id="btnDeleteSelectedServer" class="btn btn-outline-danger btn-sm py-0" onclick="deleteSelectedServer()" disabled>
+                        🗑️ Sil
+                    </button>
                     <button id="btnHealthCheck" class="btn btn-outline-secondary btn-sm py-0" onclick="checkSelectedServerHealth()" disabled>
                         ⚡ Bağlantıyı Test Et
                     </button>
@@ -312,7 +322,7 @@
         </div>
     </div>
 
-    <!-- ÇOKLU SUNUCU KONSOL IZGARASI (CONCURRENT SSE GRID) -->
+    <!-- ÇOKLU SUNUCU KONSOL IZGARASI -->
     <div id="multiModeContainer" class="d-none">
         <div class="d-flex justify-content-between align-items-center alert alert-info py-2 small mb-3">
             <span><strong>Eşzamanlı Çoklu İzleme (Multi-Server Concurrent Stream):</strong> Seçilen her sunucu için bağımsız SSE kanalı açılır. Bir sunucu kopsa bile diğerleri etkilenmez.</span>
@@ -326,9 +336,9 @@
 <div class="modal fade" id="addEnvModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Yeni Sunucu / Ortam Ekle</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">+ Yeni Sunucu / Ortam Ekle</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <form id="addEnvForm">
@@ -374,7 +384,60 @@
     </div>
 </div>
 
-<!-- Modal 2: Kritik Hata Detayları Modalı -->
+<!-- Modal 2: Sunucu Düzenleme (Edit) Modalı -->
+<div class="modal fade" id="editEnvModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title">✏️ Sunucu Bilgilerini Düzenle</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editEnvForm">
+                    <input type="hidden" id="editEnvId">
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">Sunucu Adı</label>
+                        <input type="text" class="form-control form-control-sm" id="editEnvName" required>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-8">
+                            <label class="form-label small fw-bold">Host / IP</label>
+                            <input type="text" class="form-control form-control-sm" id="editEnvHost" required>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small fw-bold">Port</label>
+                            <input type="number" class="form-control form-control-sm" id="editEnvPort">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Kullanıcı Adı</label>
+                            <input type="text" class="form-control form-control-sm" id="editEnvUser">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Şifre <span class="text-muted fw-normal">(Boş bırakırsanız değişmez)</span></label>
+                            <input type="password" class="form-control form-control-sm" id="editEnvPass" placeholder="••••••">
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">Log Dizin Yolu</label>
+                        <input type="text" class="form-control form-control-sm" id="editEnvDirPath">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">Varsayılan Log Dosyası</label>
+                        <input type="text" class="form-control form-control-sm" id="editEnvLogPath">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">İptal</button>
+                <button type="button" class="btn btn-success btn-sm" onclick="saveEditedEnvironment()">Güncelle</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal 3: Kritik Hata Detayları Modalı -->
 <div class="modal fade" id="errorDetailsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -404,7 +467,7 @@
     let selectedMultiEnvIds = new Set();
     let currentRecentErrors = [];
     let singleEventSource = null;
-    let multiEventSources = new Map(); // Her sunucu ID'si için izole EventSource tutar
+    let multiEventSources = new Map();
     let searchHistory = JSON.parse(localStorage.getItem('log_search_history') || '[]');
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -417,19 +480,23 @@
         const toastMsg = document.getElementById('toastMessage');
         toastEl.className = `toast align-items-center border-0 ${isError ? 'text-bg-danger' : 'text-bg-success'}`;
         toastMsg.innerText = msg;
-        const toast = new bootstrap.Toast(toastEl, { delay: 4000 });
+        const toast = new bootstrap.Toast(toastEl, { delay: 4500 });
         toast.show();
     }
 
     async function loadEnvironments() {
         try {
             const res = await fetch('/api/environments');
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.message || 'Sunucu listesi alınamadı');
+            }
             allEnvironments = await res.json();
             document.getElementById('serverCountBadge').innerText = allEnvironments.length + ' Sunucu';
             document.getElementById('statServerCount').innerText = allEnvironments.length;
             renderEnvironmentBar();
         } catch (err) {
-            showToast('Sunucu listesi veritabanından çekilemedi!');
+            showToast('Hata: ' + err.message);
         }
     }
 
@@ -532,7 +599,7 @@
         updateMultiActiveStreamsBadge();
     }
 
-    // --- ÇOKLU MOD SSE STREAM (MULTI-SERVER CONCURRENT) ---
+    // --- ÇOKLU MOD SSE STREAM ---
     function toggleSingleMultiStream(envId) {
         if (multiEventSources.has(envId)) {
             stopSingleMultiStream(envId);
@@ -682,6 +749,94 @@
         document.getElementById('streamIndicator').classList.add('d-none');
     }
 
+    // --- SUNUCU DÜZENLEME & SİLME (CRUD) ---
+    function openEditModalForSelected() {
+        if (!currentEnvId) return;
+        const env = allEnvironments.find(e => e.id === currentEnvId);
+        if (!env) return;
+
+        document.getElementById('editEnvId').value = env.id;
+        document.getElementById('editEnvName').value = env.name || '';
+        document.getElementById('editEnvHost').value = env.host || '';
+        document.getElementById('editEnvPort').value = env.port || 22;
+        document.getElementById('editEnvUser').value = env.username || '';
+        document.getElementById('editEnvPass').value = '';
+        document.getElementById('editEnvDirPath').value = env.logDirectoryPath || '';
+        document.getElementById('editEnvLogPath').value = env.logFilePath || '';
+
+        new bootstrap.Modal(document.getElementById('editEnvModal')).show();
+    }
+
+    async function saveEditedEnvironment() {
+        const id = document.getElementById('editEnvId').value;
+        const updateData = {
+            name: document.getElementById('editEnvName').value,
+            host: document.getElementById('editEnvHost').value,
+            port: parseInt(document.getElementById('editEnvPort').value) || 22,
+            username: document.getElementById('editEnvUser').value,
+            password: document.getElementById('editEnvPass').value,
+            logDirectoryPath: document.getElementById('editEnvDirPath').value,
+            logFilePath: document.getElementById('editEnvLogPath').value
+        };
+
+        try {
+            const res = await fetch(`/api/environments/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updateData)
+            });
+
+            if (res.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('editEnvModal')).hide();
+                showToast('Sunucu bilgileri başarıyla güncellendi!', false);
+                await loadEnvironments();
+                if (currentEnvId === parseInt(id)) {
+                    document.getElementById('selectedEnvBadge').innerText = 'Seçili: ' + updateData.name;
+                }
+            } else {
+                const err = await res.json();
+                showToast(err.message || 'Güncelleme başarısız!');
+            }
+        } catch (err) {
+            showToast('Sunucu güncellenemedi: ' + err.message);
+        }
+    }
+
+    async function deleteSelectedServer() {
+        if (!currentEnvId) return;
+        const env = allEnvironments.find(e => e.id === currentEnvId);
+        if (!env) return;
+
+        if (!confirm(`"${env.name}" (${env.host}) sunucusunu silmek istediğinizden emin misiniz?`)) {
+            return;
+        }
+
+        try {
+            const res = await fetch(`/api/environments/${currentEnvId}`, {
+                method: 'DELETE'
+            });
+
+            if (res.ok || res.status === 204) {
+                showToast(`"${env.name}" sunucusu başarıyla silindi.`, false);
+                currentEnvId = null;
+                clearConsole();
+                document.getElementById('selectedEnvBadge').innerText = 'Sunucu Seçilmedi';
+                document.getElementById('selectedEnvBadge').className = 'badge bg-secondary';
+                document.getElementById('btnEditSelectedServer').disabled = true;
+                document.getElementById('btnDeleteSelectedServer').disabled = true;
+                document.getElementById('btnFetchLogs').disabled = true;
+                document.getElementById('btnHealthCheck').disabled = true;
+                document.getElementById('btnStreamToggle').disabled = true;
+                await loadEnvironments();
+            } else {
+                const err = await res.json();
+                showToast(err.message || 'Silme işlemi başarısız!');
+            }
+        } catch (err) {
+            showToast('Silme hatası: ' + err.message);
+        }
+    }
+
     // --- TEKİL MOD İŞLEVLERİ & STATS GÜNCELLEME ---
     async function updateDashboardStats(envId) {
         try {
@@ -789,6 +944,8 @@
         document.getElementById('btnFetchLogs').disabled = false;
         document.getElementById('btnHealthCheck').disabled = false;
         document.getElementById('btnStreamToggle').disabled = false;
+        document.getElementById('btnEditSelectedServer').disabled = false;
+        document.getElementById('btnDeleteSelectedServer').disabled = false;
 
         document.querySelectorAll('.env-btn').forEach(b => {
             b.classList.remove('btn-primary');
@@ -999,9 +1156,12 @@
                 document.getElementById('addEnvForm').reset();
                 loadEnvironments();
                 showToast('Yeni sunucu başarıyla kaydedildi!', false);
+            } else {
+                const err = await res.json();
+                showToast(err.message || 'Sunucu kaydedilemedi!');
             }
         } catch (err) {
-            showToast('Sunucu kaydedilemedi: ' + err);
+            showToast('Sunucu kaydedilemedi: ' + err.message);
         }
     }
 
