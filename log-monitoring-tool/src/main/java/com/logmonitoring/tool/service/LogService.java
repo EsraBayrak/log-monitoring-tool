@@ -86,26 +86,37 @@ public class LogService {
         String command = "tail -n 300 " + targetPath;
         return executeSshCommand(env, command);
     }
+    
 
+    private String sanitizeInput(String input) {
+    if (input == null) return "";
+    
+    return input.replaceAll("[;&|`$><!]", "").trim();
+}
     public String searchLogsWithGrep(Long envId, String fileName, String level, String keyword, int lineLimit) {
+        // Girdileri temizle (Command Injection Koruması)
+        String safeFileName = sanitizeInput(fileName);
+        String safeLevel = sanitizeInput(level);
+        String safeKeyword = sanitizeInput(keyword);
+
         ServerEnvironment env = environmentRepository.findById(envId).orElse(null);
         if (env == null) {
             return "[HATA] Sunucu tanımı bulunamadı.";
         }
 
         String searchPath;
-        if (fileName != null && !fileName.isBlank() && !fileName.equalsIgnoreCase("ALL")) {
-            searchPath = env.getLogDirectoryPath() + "/" + fileName;
+        if (!safeFileName.isBlank() && !safeFileName.equalsIgnoreCase("ALL")) {
+            searchPath = env.getLogDirectoryPath() + "/" + safeFileName;
         } else {
             searchPath = env.getLogDirectoryPath() + "/*.{out,log}";
         }
 
         StringBuilder grepPattern = new StringBuilder();
-        if (level != null && !level.isBlank()) {
-            grepPattern.append(level).append(" ");
+        if (!safeLevel.isBlank()) {
+            grepPattern.append(safeLevel).append(" ");
         }
-        if (keyword != null && !keyword.isBlank()) {
-            grepPattern.append(keyword);
+        if (!safeKeyword.isBlank()) {
+            grepPattern.append(safeKeyword);
         }
 
         String query = grepPattern.toString().trim();

@@ -45,4 +45,23 @@ public class GlobalExceptionHandler {
         );
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
     }
+
+    @ExceptionHandler(org.springframework.web.bind.MethodArgumentNotValidException.class)
+public ResponseEntity<ApiErrorDto> handleValidationExceptions(
+        org.springframework.web.bind.MethodArgumentNotValidException ex,
+        jakarta.servlet.http.HttpServletRequest request) {
+    
+    String firstError = ex.getBindingResult().getFieldErrors().stream()
+            .map(err -> err.getField() + ": " + err.getDefaultMessage())
+            .findFirst()
+            .orElse("Geçersiz girdi parametresi.");
+
+    ApiErrorDto error = new ApiErrorDto(
+            HttpStatus.BAD_REQUEST.value(),
+            "Girdi Doğrulama Hatası",
+            firstError,
+            request.getRequestURI()
+    );
+    return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+}
 }

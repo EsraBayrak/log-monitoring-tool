@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Oracle & SSH Log Monitoring Tool</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .metric-card {
             border-radius: 8px;
@@ -102,20 +104,36 @@
             50% { transform: scale(1.3); opacity: 1; }
             100% { transform: scale(0.9); opacity: 0.7; }
         }
-        .server-chip-group {
-            display: inline-flex;
-            align-items: center;
+        .critical-alert-toast {
+            animation: shake 0.5s ease-in-out;
+            border-left: 6px solid #ff1744 !important;
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-6px); }
+            40%, 80% { transform: translateX(6px); }
         }
     </style>
 </head>
 <body class="bg-light">
 
-<!-- Toast Bildirim Alanı -->
+<!-- Toast & Alert Bildirim Alanı -->
 <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100;">
     <div id="liveToast" class="toast align-items-center text-bg-danger border-0" role="alert" aria-live="assertive" aria-atomic="true">
         <div class="d-flex">
             <div class="toast-body" id="toastMessage">Bağlantı hatası oluştu.</div>
             <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    </div>
+    <!-- Kritik Alert Toast -->
+    <div id="criticalAlertToast" class="toast critical-alert-toast text-bg-dark border-0 shadow-lg" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header bg-danger text-white">
+            <strong class="me-auto">🚨 KRİTİK LOG UYARISI</strong>
+            <small class="text-white-50" id="alertTimestamp">Şimdi</small>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body bg-dark text-light font-monospace small" id="criticalAlertBody">
+            Kritik hata tespit edildi!
         </div>
     </div>
 </div>
@@ -125,10 +143,13 @@
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <h3 class="fw-bold mb-0 text-dark">Sunucu Log & Konfigürasyon İzleme</h3>
-            <p class="text-muted mb-0 small">Java 21 • Spring Boot • Oracle DB • SSE Stream • Centralized Error Handling • Multi-Server CRUD</p>
+            <p class="text-muted mb-0 small">Java 21 • Spring Boot • Oracle DB • SSE Stream • Observability & Chart Visualizer</p>
         </div>
         <div class="d-flex gap-2">
-            <a href="/swagger-ui/index.html" target="_blank" class="btn btn-outline-dark btn-sm">
+            <button class="btn btn-outline-dark btn-sm" onclick="toggleChartSection()">
+                📊 Dağılım Grafiği
+            </button>
+            <a href="/swagger-ui/index.html" target="_blank" class="btn btn-outline-secondary btn-sm">
                 📖 Swagger API Docs
             </a>
             <div class="btn-group btn-group-sm" role="group">
@@ -189,6 +210,28 @@
         <div class="progress-bar bg-danger" id="barError" role="progressbar" style="width: 0%"></div>
         <div class="progress-bar bg-warning" id="barWarn" role="progressbar" style="width: 0%"></div>
         <div class="progress-bar bg-success" id="barInfo" role="progressbar" style="width: 0%"></div>
+    </div>
+
+    <!-- GRAFİKSEL DAĞILIM PANELİ (Chart.js - Açılır/Kapanır) -->
+    <div id="chartSection" class="card shadow-sm mb-3 d-none">
+        <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+            <span class="fw-bold small text-dark">📊 Log Seviyesi Dağılım Grafikleri (Observability View)</span>
+            <button class="btn-close btn-sm" onclick="toggleChartSection()"></button>
+        </div>
+        <div class="card-body py-3">
+            <div class="row align-items-center">
+                <div class="col-md-5 d-flex justify-content-center">
+                    <div style="width: 220px; height: 220px;">
+                        <canvas id="logDoughnutChart"></canvas>
+                    </div>
+                </div>
+                <div class="col-md-7">
+                    <div style="height: 200px;">
+                        <canvas id="logBarChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Sunucu Havuzu & Yönetim -->
@@ -470,9 +513,14 @@
     let multiEventSources = new Map();
     let searchHistory = JSON.parse(localStorage.getItem('log_search_history') || '[]');
 
+    // Chart.js Referansları
+    let doughnutChartInstance = null;
+    let barChartInstance = null;
+
     document.addEventListener('DOMContentLoaded', () => {
         loadEnvironments();
         renderSearchHistory();
+        initCharts();
     });
 
     function showToast(msg, isError = true) {
@@ -482,6 +530,82 @@
         toastMsg.innerText = msg;
         const toast = new bootstrap.Toast(toastEl, { delay: 4500 });
         toast.show();
+    }
+
+    function triggerCriticalAlert(logLine, serverName = '') {
+        const toastEl = document.getElementById('criticalAlertToast');
+        document.getElementById('alertTimestamp').innerText = new Date().toLocaleTimeString();
+        document.getElementById('criticalAlertBody').innerHTML = `<strong>${escapeHtml(serverName)}:</strong> ${escapeHtml(logLine.substring(0, 150))}${logLine.length > 150 ? '...' : ''}`;
+        const toast = new bootstrap.Toast(toastEl, { delay: 7000 });
+        toast.show();
+    }
+
+    // --- CHART.JS BAŞLATMA VE GÜNCELLEME ---
+    function initCharts() {
+        const ctxDoughnut = document.getElementById('logDoughnutChart').getContext('2d');
+        doughnutChartInstance = new Chart(ctxDoughnut, {
+            type: 'doughnut',
+            data: {
+                labels: ['ERROR', 'WARN', 'INFO'],
+                datasets: [{
+                    data: [1, 1, 1], // Başlangıçta boş görünmemesi için taban veri
+                    backgroundColor: ['#dc3545', '#ffc107', '#198754'],
+                    hoverOffset: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return ` ${context.label}: ${context.raw} adet`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        const ctxBar = document.getElementById('logBarChart').getContext('2d');
+        barChartInstance = new Chart(ctxBar, {
+            type: 'bar',
+            data: {
+                labels: ['Log Seviye Dağılımı'],
+                datasets: [
+                    { label: 'ERROR', data: [0], backgroundColor: '#dc3545' },
+                    { label: 'WARN', data: [0], backgroundColor: '#ffc107' },
+                    { label: 'INFO', data: [0], backgroundColor: '#198754' }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+    }
+    function updateCharts(errorCount, warnCount, infoCount) {
+        if (doughnutChartInstance && barChartInstance) {
+            const total = errorCount + warnCount + infoCount;
+            
+            doughnutChartInstance.data.datasets[0].data = total > 0 ? [errorCount, warnCount, infoCount] : [0, 0, 0];
+            doughnutChartInstance.update();
+
+            barChartInstance.data.datasets[0].data = [errorCount];
+            barChartInstance.data.datasets[1].data = [warnCount];
+            barChartInstance.data.datasets[2].data = [infoCount];
+            barChartInstance.update();
+        }
+    }
+
+    function toggleChartSection() {
+        const sec = document.getElementById('chartSection');
+        sec.classList.toggle('d-none');
     }
 
     async function loadEnvironments() {
@@ -599,7 +723,7 @@
         updateMultiActiveStreamsBadge();
     }
 
-    // --- ÇOKLU MOD SSE STREAM ---
+    // --- ÇOKLU MOD SSE STREAM & KRİTİK ALERT ---
     function toggleSingleMultiStream(envId) {
         if (multiEventSources.has(envId)) {
             stopSingleMultiStream(envId);
@@ -610,6 +734,8 @@
 
     function startSingleMultiStream(envId) {
         stopSingleMultiStream(envId);
+        const env = allEnvironments.find(e => e.id === envId);
+        const serverName = env ? env.name : `Sunucu-${envId}`;
 
         const consoleEl = document.getElementById(`multi_console_${envId}`);
         const streamBtn = document.getElementById(`multi_stream_btn_${envId}`);
@@ -630,8 +756,15 @@
 
         sse.addEventListener('log', (event) => {
             if (consoleEl) {
-                consoleEl.innerHTML += formatSingleLine(event.data) + '\n';
+                const line = event.data;
+                consoleEl.innerHTML += formatSingleLine(line) + '\n';
                 consoleEl.scrollTop = consoleEl.scrollHeight;
+
+                // Kritik Hata Kontrolü (OutOfMemory, FATAL, Exception)
+                const up = line.toUpperCase();
+                if (up.includes('OUTOFMEMORY') || up.includes('FATAL') || up.includes('CRITICAL')) {
+                    triggerCriticalAlert(line, serverName);
+                }
             }
         });
 
@@ -726,9 +859,16 @@
         singleEventSource = new EventSource(`/api/logs/stream?envId=${currentEnvId}`);
 
         singleEventSource.addEventListener('log', (event) => {
-            rawLogContent += event.data + '\n';
-            consoleEl.innerHTML += formatSingleLine(event.data) + '\n';
+            const line = event.data;
+            rawLogContent += line + '\n';
+            consoleEl.innerHTML += formatSingleLine(line) + '\n';
             consoleEl.scrollTop = consoleEl.scrollHeight;
+
+            const up = line.toUpperCase();
+            if (up.includes('OUTOFMEMORY') || up.includes('FATAL') || up.includes('CRITICAL')) {
+                const env = allEnvironments.find(e => e.id === currentEnvId);
+                triggerCriticalAlert(line, env ? env.name : '');
+            }
         });
 
         singleEventSource.onerror = () => {
@@ -863,6 +1003,9 @@
                     document.getElementById('barWarn').style.width = '0%';
                     document.getElementById('barInfo').style.width = '0%';
                 }
+
+                // Grafikleri Güncelle
+                updateCharts(err, warn, info);
             }
         } catch (err) {
             console.error(err);
