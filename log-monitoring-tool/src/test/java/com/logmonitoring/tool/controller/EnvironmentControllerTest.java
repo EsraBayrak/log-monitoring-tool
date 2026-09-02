@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import com.logmonitoring.tool.repository.AuditLogRepository;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -31,6 +32,9 @@ class EnvironmentControllerTest {
 
     @Mock
     private ServerEnvironmentRepository environmentRepository;
+
+    @Mock
+    private AuditLogRepository auditLogRepository; 
 
     @InjectMocks
     private EnvironmentController environmentController;

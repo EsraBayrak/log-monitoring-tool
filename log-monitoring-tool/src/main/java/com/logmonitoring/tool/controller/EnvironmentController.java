@@ -2,11 +2,16 @@ package com.logmonitoring.tool.controller;
 
 import com.logmonitoring.tool.dto.ServerEnvironmentRequestDto;
 import com.logmonitoring.tool.dto.ServerEnvironmentResponseDto;
+import com.logmonitoring.tool.model.AuditLog;
 import com.logmonitoring.tool.model.ServerEnvironment;
+import com.logmonitoring.tool.repository.AuditLogRepository;
 import com.logmonitoring.tool.repository.ServerEnvironmentRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,13 +22,18 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api")
-@Tag(name = "Environment Controller", description = "Sunucu ortamları yönetim uç noktaları (CRUD & Security)")
+@Tag(name = "Environment Controller", description = "Sunucu ortamları ve Audit log yönetimi")
 public class EnvironmentController {
 
-    private final ServerEnvironmentRepository environmentRepository;
+    private static final Logger log = LoggerFactory.getLogger(EnvironmentController.class);
 
-    public EnvironmentController(ServerEnvironmentRepository environmentRepository) {
+    private final ServerEnvironmentRepository environmentRepository;
+    private final AuditLogRepository auditLogRepository;
+
+    public EnvironmentController(ServerEnvironmentRepository environmentRepository, 
+                                 AuditLogRepository auditLogRepository) {
         this.environmentRepository = environmentRepository;
+        this.auditLogRepository = auditLogRepository;
     }
 
     @Operation(summary = "Tüm kayıtlı sunucuları şifreleri maskelenmiş olarak listeler")
@@ -34,9 +44,12 @@ public class EnvironmentController {
                 .collect(Collectors.toList());
     }
 
-    @Operation(summary = "Yeni bir sunucu ortamı tanımlar (Girdi Doğrulamalı)")
+    @Operation(summary = "Yeni bir sunucu ortamı tanımlar")
     @PostMapping("/environments")
-    public ResponseEntity<ServerEnvironmentResponseDto> createEnvironment(@Valid @RequestBody ServerEnvironmentRequestDto dto) {
+    public ResponseEntity<ServerEnvironmentResponseDto> createEnvironment(
+            @Valid @RequestBody ServerEnvironmentRequestDto dto,
+            HttpServletRequest request) {
+        
         ServerEnvironment env = new ServerEnvironment();
         env.setName(dto.getName());
         env.setHost(dto.getHost());
@@ -47,6 +60,10 @@ public class EnvironmentController {
         env.setLogFilePath(dto.getLogFilePath());
 
         ServerEnvironment saved = environmentRepository.save(env);
+        
+        auditLogRepository.save(new AuditLog("CREATE", "ServerEnvironment", saved.getId(), request.getRemoteAddr(), "Sunucu eklendi: " + saved.getName()));
+        log.info("Yeni sunucu kaydı oluşturuldu: ID={}, Name={}", saved.getId(), saved.getName());
+
         return new ResponseEntity<>(mapToResponseDto(saved), HttpStatus.CREATED);
     }
 
@@ -54,8 +71,9 @@ public class EnvironmentController {
     @PutMapping("/environments/{id}")
     public ResponseEntity<ServerEnvironmentResponseDto> updateEnvironment(
             @PathVariable Long id, 
-            @Valid @RequestBody ServerEnvironmentRequestDto dto) {
-        
+            @Valid @RequestBody ServerEnvironmentRequestDto dto,
+            HttpServletRequest request) {
+
         ServerEnvironment existing = environmentRepository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("ID: " + id + " olan sunucu bulunamadı."));
 
@@ -70,17 +88,31 @@ public class EnvironmentController {
         existing.setLogFilePath(dto.getLogFilePath());
 
         ServerEnvironment saved = environmentRepository.save(existing);
+
+        auditLogRepository.save(new AuditLog("UPDATE", "ServerEnvironment", saved.getId(), request.getRemoteAddr(), "Sunucu güncellendi: " + saved.getName()));
+        log.info("Sunucu güncellendi: ID={}", saved.getId());
+
         return ResponseEntity.ok(mapToResponseDto(saved));
     }
 
     @Operation(summary = "Kayıtlı bir sunucu ortamını siler")
     @DeleteMapping("/environments/{id}")
-    public ResponseEntity<Void> deleteEnvironment(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteEnvironment(@PathVariable Long id, HttpServletRequest request) {
         if (!environmentRepository.existsById(id)) {
             throw new NoSuchElementException("ID: " + id + " olan sunucu bulunamadı.");
         }
         environmentRepository.deleteById(id);
+
+        auditLogRepository.save(new AuditLog("DELETE", "ServerEnvironment", id, request.getRemoteAddr(), "Sunucu silindi: ID=" + id));
+        log.info("Sunucu silindi: ID={}", id);
+
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Son 50 işlem denetim kaydını (Audit Logs) listeler")
+    @GetMapping("/audit-logs")
+    public List<AuditLog> getAuditLogs() {
+        return auditLogRepository.findTop50ByOrderByTimestampDesc();
     }
 
     private ServerEnvironmentResponseDto mapToResponseDto(ServerEnvironment env) {
