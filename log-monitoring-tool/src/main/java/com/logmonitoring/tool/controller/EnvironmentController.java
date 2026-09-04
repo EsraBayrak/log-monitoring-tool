@@ -12,6 +12,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -38,6 +40,7 @@ public class EnvironmentController {
 
     @Operation(summary = "Tüm kayıtlı sunucuları şifreleri maskelenmiş olarak listeler")
     @GetMapping("/environments")
+    @Cacheable(value = "environmentsCache")
     public List<ServerEnvironmentResponseDto> getAllEnvironments() {
         return environmentRepository.findAll().stream()
                 .map(this::mapToResponseDto)
@@ -46,6 +49,7 @@ public class EnvironmentController {
 
     @Operation(summary = "Yeni bir sunucu ortamı tanımlar")
     @PostMapping("/environments")
+    @CacheEvict(value = "environmentsCache", allEntries = true)
     public ResponseEntity<ServerEnvironmentResponseDto> createEnvironment(
             @Valid @RequestBody ServerEnvironmentRequestDto dto,
             HttpServletRequest request) {
@@ -69,6 +73,7 @@ public class EnvironmentController {
 
     @Operation(summary = "Mevcut bir sunucu ortamını günceller")
     @PutMapping("/environments/{id}")
+    @CacheEvict(value = "environmentsCache", allEntries = true)
     public ResponseEntity<ServerEnvironmentResponseDto> updateEnvironment(
             @PathVariable Long id, 
             @Valid @RequestBody ServerEnvironmentRequestDto dto,
@@ -97,6 +102,7 @@ public class EnvironmentController {
 
     @Operation(summary = "Kayıtlı bir sunucu ortamını siler")
     @DeleteMapping("/environments/{id}")
+    @CacheEvict(value = "environmentsCache", allEntries = true)
     public ResponseEntity<Void> deleteEnvironment(@PathVariable Long id, HttpServletRequest request) {
         if (!environmentRepository.existsById(id)) {
             throw new NoSuchElementException("ID: " + id + " olan sunucu bulunamadı.");

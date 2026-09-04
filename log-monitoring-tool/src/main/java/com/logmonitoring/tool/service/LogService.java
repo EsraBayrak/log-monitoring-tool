@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Vector;
 import java.util.concurrent.Executor;
+import org.springframework.cache.annotation.Cacheable;
 
 @Service
 public class LogService {
@@ -42,6 +43,7 @@ public class LogService {
         return executeSshCommand(env, command);
     }
 
+    @Cacheable(value = "sftpFilesCache", key = "{#envId, #extensionFilter}")
     public List<String> listFilesInDirectory(Long envId, String extensionFilter) {
         List<String> fileList = new ArrayList<>();
         ServerEnvironment env = environmentRepository.findById(envId).orElse(null);
@@ -76,6 +78,7 @@ public class LogService {
         return fileList;
     }
 
+    @Cacheable(value = "sftpFileContentCache", key = "{#envId, #fileName}")
     public String fetchFileContent(Long envId, String fileName) {
         ServerEnvironment env = environmentRepository.findById(envId).orElse(null);
         if (env == null) {
