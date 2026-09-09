@@ -96,11 +96,13 @@ public class LogService {
     
     return input.replaceAll("[;&|`$><!]", "").trim();
 }
-    public String searchLogsWithGrep(Long envId, String fileName, String level, String keyword, int lineLimit) {
+    public String searchLogsWithGrep(Long envId, String fileName, String level, String keyword, String sessionId, String msisdn, int lineLimit) {
         // Girdileri temizle (Command Injection Koruması)
         String safeFileName = sanitizeInput(fileName);
         String safeLevel = sanitizeInput(level);
         String safeKeyword = sanitizeInput(keyword);
+        String safeSessionId = sanitizeInput(sessionId);
+        String safeMsisdn = sanitizeInput(msisdn);
 
         ServerEnvironment env = environmentRepository.findById(envId).orElse(null);
         if (env == null) {
@@ -114,23 +116,31 @@ public class LogService {
             searchPath = env.getLogDirectoryPath() + "/*.{out,log}";
         }
 
-        StringBuilder grepPattern = new StringBuilder();
-        if (!safeLevel.isBlank()) {
-            grepPattern.append(safeLevel).append(" ");
-        }
-        if (!safeKeyword.isBlank()) {
-            grepPattern.append(safeKeyword);
+        // Aranacak tüm filtre kriterlerini listeye topla
+        List<String> criteria = new ArrayList<>();
+        if (!safeLevel.isBlank()) criteria.add(safeLevel);
+        if (!safeKeyword.isBlank()) criteria.add(safeKeyword);
+        if (!safeSessionId.isBlank()) criteria.add(safeSessionId);
+        if (!safeMsisdn.isBlank()) criteria.add(safeMsisdn);
+
+        // Kriter yoksa sadece son satırları çek
+        if (criteria.isEmpty()) {
+            String command = "tail -n " + lineLimit + " " + searchPath;
+            return executeSshCommand(env, command);
         }
 
-        String query = grepPattern.toString().trim();
-        String command;
-        if (query.isEmpty()) {
-            command = "tail -n " + lineLimit + " " + searchPath;
-        } else {
-            command = "grep -in \"" + query + "\" " + searchPath + " | tail -n " + lineLimit;
+        // İlk filtreyi ana dosya üzerinde çalıştır
+        StringBuilder command = new StringBuilder();
+        command.append("grep -in \"").append(criteria.get(0)).append("\" ").append(searchPath);
+
+        // Birden fazla kriter varsa (örn: hem SessionID hem ERROR) ardışık boru (pipe) ile süz
+        for (int i = 1; i < criteria.size(); i++) {
+            command.append(" | grep -i \"").append(criteria.get(i)).append("\"");
         }
 
-        return executeSshCommand(env, command);
+        command.append(" | tail -n ").append(lineLimit);
+
+        return executeSshCommand(env, command.toString());
     }
 
     public LogStatsDto analyzeLogStats(Long envId, int lines) {

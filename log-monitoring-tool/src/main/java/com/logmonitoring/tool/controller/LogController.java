@@ -41,8 +41,10 @@ public class LogController {
             @RequestParam(required = false) String fileName,
             @RequestParam(required = false) String level,
             @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String sessionId,
+            @RequestParam(required = false) String msisdn,
             @RequestParam(defaultValue = "100") int lineLimit) {
-        return logService.searchLogsWithGrep(envId, fileName, level, keyword, lineLimit);
+        return logService.searchLogsWithGrep(envId, fileName, level, keyword, sessionId, msisdn, lineLimit);
     }
 
     @GetMapping("/stats")

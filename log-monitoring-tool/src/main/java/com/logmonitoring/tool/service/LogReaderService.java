@@ -19,33 +19,47 @@ public class LogReaderService {
         return executeSshCommand(env, command);
     }
 
-    // 2. Sunucu Taraflı Güçlü Grep (Level ve Metin Arama)
-    // Örn: grep -inE "ERROR|WARN" /dizin/dosya.out | tail -n 200
-    public String searchLogsWithGrep(ServerEnvironment env, String fileName, String level, String keyword, int lineLimit) {
-        StringBuilder cmd = new StringBuilder("grep -in");
-
+    // 2. Sunucu Taraflı Güçlü Grep (Level, Keyword, SessionID, MSISDN Desteği)
+    public String searchLogsWithGrep(ServerEnvironment env, String fileName, String level, 
+                                     String keyword, String sessionId, String msisdn, int lineLimit) {
+        
         String fullPath;
         if (fileName != null && !fileName.trim().isEmpty() && !fileName.equals("ALL")) {
             fullPath = getNormalizedDirPath(env.getLogDirectoryPath()) + fileName;
         } else {
-            // Belirtilen dizindeki tüm .log ve .out dosyalarında ara
             fullPath = getNormalizedDirPath(env.getLogDirectoryPath()) + "*.{out,log}";
         }
 
-        // Filtre deseni oluştur
-        if (level != null && !level.trim().isEmpty() && keyword != null && !keyword.trim().isEmpty()) {
-            // Hem seviye hem kelime varsa
-            cmd.append("E \"(").append(level).append(").*(").append(keyword).append(")\" ");
-        } else if (level != null && !level.trim().isEmpty()) {
-            cmd.append("E \"").append(level).append("\" ");
-        } else if (keyword != null && !keyword.trim().isEmpty()) {
-            cmd.append(" \"").append(keyword).append("\" ");
-        } else {
-            // Filtre yoksa sadece tail yap
-            return readSpecificFile(env, fileName != null ? fileName : "oim_m1.out");
+        // Ana arama deseni oluştur
+        List<String> patterns = new ArrayList<>();
+        if (level != null && !level.trim().isEmpty()) {
+            patterns.add(level.trim());
+        }
+        if (keyword != null && !keyword.trim().isEmpty()) {
+            patterns.add(keyword.trim());
+        }
+        if (sessionId != null && !sessionId.trim().isEmpty()) {
+            patterns.add(sessionId.trim());
+        }
+        if (msisdn != null && !msisdn.trim().isEmpty()) {
+            patterns.add(msisdn.trim());
         }
 
-        cmd.append(fullPath).append(" 2>/dev/null | tail -n ").append(lineLimit > 0 ? lineLimit : 200);
+        // Eğer hiçbir filtre verilmemişse dosyanın son satırlarını dön
+        if (patterns.isEmpty()) {
+            return readSpecificFile(env, fileName != null && !fileName.equals("ALL") ? fileName : "oim_m1.out");
+        }
+
+        // İlk filtreyi dosya üzerinde çalıştır
+        StringBuilder cmd = new StringBuilder("grep -inE \"");
+        cmd.append(patterns.get(0)).append("\" ").append(fullPath);
+
+        // Ek filtreler varsa ardışık pipe ( | grep -iE "..." ) ile filtrele
+        for (int i = 1; i < patterns.size(); i++) {
+            cmd.append(" | grep -iE \"").append(patterns.get(i)).append("\"");
+        }
+
+        cmd.append(" 2>/dev/null | tail -n ").append(lineLimit > 0 ? lineLimit : 200);
 
         return executeSshCommand(env, cmd.toString());
     }
