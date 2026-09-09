@@ -6,8 +6,7 @@ import com.logmonitoring.tool.model.AuditLog;
 import com.logmonitoring.tool.model.ServerEnvironment;
 import com.logmonitoring.tool.repository.AuditLogRepository;
 import com.logmonitoring.tool.repository.ServerEnvironmentRepository;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
+
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -24,7 +23,7 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api")
-@Tag(name = "Environment Controller", description = "Sunucu ortamları ve Audit log yönetimi")
+
 public class EnvironmentController {
 
     private static final Logger log = LoggerFactory.getLogger(EnvironmentController.class);
@@ -38,7 +37,6 @@ public class EnvironmentController {
         this.auditLogRepository = auditLogRepository;
     }
 
-    @Operation(summary = "Tüm kayıtlı sunucuları şifreleri maskelenmiş olarak listeler")
     @GetMapping("/environments")
     @Cacheable(value = "environmentsCache")
     public List<ServerEnvironmentResponseDto> getAllEnvironments() {
@@ -47,7 +45,6 @@ public class EnvironmentController {
                 .collect(Collectors.toList());
     }
 
-    @Operation(summary = "Yeni bir sunucu ortamı tanımlar")
     @PostMapping("/environments")
     @CacheEvict(value = "environmentsCache", allEntries = true)
     public ResponseEntity<ServerEnvironmentResponseDto> createEnvironment(
@@ -71,7 +68,6 @@ public class EnvironmentController {
         return new ResponseEntity<>(mapToResponseDto(saved), HttpStatus.CREATED);
     }
 
-    @Operation(summary = "Mevcut bir sunucu ortamını günceller")
     @PutMapping("/environments/{id}")
     @CacheEvict(value = "environmentsCache", allEntries = true)
     public ResponseEntity<ServerEnvironmentResponseDto> updateEnvironment(
@@ -100,7 +96,6 @@ public class EnvironmentController {
         return ResponseEntity.ok(mapToResponseDto(saved));
     }
 
-    @Operation(summary = "Kayıtlı bir sunucu ortamını siler")
     @DeleteMapping("/environments/{id}")
     @CacheEvict(value = "environmentsCache", allEntries = true)
     public ResponseEntity<Void> deleteEnvironment(@PathVariable Long id, HttpServletRequest request) {
@@ -115,7 +110,6 @@ public class EnvironmentController {
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "Son 50 işlem denetim kaydını (Audit Logs) listeler")
     @GetMapping("/audit-logs")
     public List<AuditLog> getAuditLogs() {
         return auditLogRepository.findTop50ByOrderByTimestampDesc();

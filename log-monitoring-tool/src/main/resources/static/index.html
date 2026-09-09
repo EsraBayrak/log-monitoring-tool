@@ -149,9 +149,6 @@
             <button class="btn btn-outline-dark btn-sm" onclick="toggleChartSection()">
                 📊 Dağılım Grafiği
             </button>
-            <a href="/swagger-ui/index.html" target="_blank" class="btn btn-outline-secondary btn-sm">
-                📖 Swagger API Docs
-            </a>
             <div class="btn-group btn-group-sm" role="group">
                 <input type="radio" class="btn-check" name="viewMode" id="singleModeRadio" checked onchange="switchViewMode('single')">
                 <label class="btn btn-outline-secondary" for="singleModeRadio">Tek Sunucu Modu</label>
@@ -212,7 +209,7 @@
         <div class="progress-bar bg-success" id="barInfo" role="progressbar" style="width: 0%"></div>
     </div>
 
-    <!-- GRAFİKSEL DAĞILIM PANELİ (Chart.js - Açılır/Kapanır) -->
+    <!-- GRAFİKSEL DAĞILIM PANELİ (Chart.js) -->
     <div id="chartSection" class="card shadow-sm mb-3 d-none">
         <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
             <span class="fw-bold small text-dark">📊 Log Seviyesi Dağılım Grafikleri (Observability View)</span>
@@ -240,6 +237,9 @@
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <span class="fw-bold small text-muted" id="serverSelectionTitle">Kayıtlı Sunucular (Seçim & Yönetim):</span>
                 <div class="d-flex gap-2 align-items-center">
+                    <button id="btnClearSelection" class="btn btn-outline-secondary btn-sm py-0" onclick="clearServerSelection()" disabled>
+                        ✖️ Seçimi Temizle
+                    </button>
                     <button id="btnEditSelectedServer" class="btn btn-outline-primary btn-sm py-0" onclick="openEditModalForSelected()" disabled>
                         ✏️ Düzenle
                     </button>
@@ -335,6 +335,25 @@
                         <span class="text-muted small">Henüz arama yapılmadı.</span>
                     </div>
                 </div>
+
+                <!-- Gelişmiş Regex Şablonları & Tarih/Saat Aralığı Süzgeci -->
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 pt-2 mt-1 border-top">
+    <div class="d-flex align-items-center gap-1 flex-wrap">
+        <span class="small text-muted fw-bold">Regex Şablonları:</span>
+        <span class="badge bg-dark quick-tag" onclick="applyRegexTemplate('ERROR|WARN')">⚠️ Hata & Uyarı</span>
+        <span class="badge bg-dark quick-tag" onclick="applyRegexTemplate('([a-zA-Z0-9_]+Exception)')">💥 Exception</span>
+        <span class="badge bg-dark quick-tag" onclick="applyRegexTemplate('\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b')">🌐 IP Bulucu</span>
+        <span class="badge bg-dark quick-tag" onclick="applyRegexTemplate('timeout|refused|failed|connection')">⏳ Bağlantı Hataları</span>
+    </div>
+    <div class="d-flex align-items-center gap-1 flex-wrap">
+        <span class="small text-muted fw-bold">Tarih/Saat Aralığı:</span>
+        <input type="datetime-local" id="filterStartTime" class="form-control form-control-sm" style="width: 175px;" title="Başlangıç Tarih ve Saati">
+        <span class="small text-muted">-</span>
+        <input type="datetime-local" id="filterEndTime" class="form-control form-control-sm" style="width: 175px;" title="Bitiş Tarih ve Saati">
+        <button type="button" class="btn btn-sm btn-primary py-0" onclick="filterLogsByDateTimeRange()">Süz</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary py-0" onclick="resetDateTimeFilter()">Sıfırla</button>
+    </div>
+</div>
             </div>
         </div>
 
@@ -548,7 +567,7 @@
             data: {
                 labels: ['ERROR', 'WARN', 'INFO'],
                 datasets: [{
-                    data: [1, 1, 1], // Başlangıçta boş görünmemesi için taban veri
+                    data: [1, 1, 1],
                     backgroundColor: ['#dc3545', '#ffc107', '#198754'],
                     hoverOffset: 6
                 }]
@@ -589,6 +608,7 @@
             }
         });
     }
+
     function updateCharts(errorCount, warnCount, infoCount) {
         if (doughnutChartInstance && barChartInstance) {
             const total = errorCount + warnCount + infoCount;
@@ -760,7 +780,6 @@
                 consoleEl.innerHTML += formatSingleLine(line) + '\n';
                 consoleEl.scrollTop = consoleEl.scrollHeight;
 
-                // Kritik Hata Kontrolü (OutOfMemory, FATAL, Exception)
                 const up = line.toUpperCase();
                 if (up.includes('OUTOFMEMORY') || up.includes('FATAL') || up.includes('CRITICAL')) {
                     triggerCriticalAlert(line, serverName);
@@ -958,15 +977,7 @@
 
             if (res.ok || res.status === 204) {
                 showToast(`"${env.name}" sunucusu başarıyla silindi.`, false);
-                currentEnvId = null;
-                clearConsole();
-                document.getElementById('selectedEnvBadge').innerText = 'Sunucu Seçilmedi';
-                document.getElementById('selectedEnvBadge').className = 'badge bg-secondary';
-                document.getElementById('btnEditSelectedServer').disabled = true;
-                document.getElementById('btnDeleteSelectedServer').disabled = true;
-                document.getElementById('btnFetchLogs').disabled = true;
-                document.getElementById('btnHealthCheck').disabled = true;
-                document.getElementById('btnStreamToggle').disabled = true;
+                clearServerSelection();
                 await loadEnvironments();
             } else {
                 const err = await res.json();
@@ -975,6 +986,43 @@
         } catch (err) {
             showToast('Silme hatası: ' + err.message);
         }
+    }
+
+    function clearServerSelection() {
+        stopSingleLogStream();
+        currentEnvId = null;
+        clearConsole();
+
+        document.getElementById('selectedEnvBadge').innerText = 'Sunucu Seçilmedi';
+        document.getElementById('selectedEnvBadge').className = 'badge bg-secondary';
+        document.getElementById('statServerStatus').innerText = 'Hazır';
+        document.getElementById('statServerStatus').className = 'metric-value small pt-1 text-muted';
+
+        document.getElementById('btnClearSelection').disabled = true;
+        document.getElementById('btnEditSelectedServer').disabled = true;
+        document.getElementById('btnDeleteSelectedServer').disabled = true;
+        document.getElementById('btnFetchLogs').disabled = true;
+        document.getElementById('btnHealthCheck').disabled = true;
+        document.getElementById('btnStreamToggle').disabled = true;
+        document.getElementById('btnReadSelectedFile').disabled = true;
+
+        const dropdown = document.getElementById('fileDropdown');
+        dropdown.disabled = true;
+        dropdown.innerHTML = '<option value="">Önce bir sunucu seçiniz...</option>';
+
+        document.querySelectorAll('.env-btn').forEach(b => {
+            b.classList.remove('btn-primary');
+            b.classList.add('btn-outline-primary');
+        });
+
+        updateCharts(0, 0, 0);
+        document.getElementById('statTotalLines').innerText = '0';
+        document.getElementById('statErrorCount').innerText = '0';
+        document.getElementById('statWarnCount').innerText = '0';
+        document.getElementById('statInfoCount').innerText = '0';
+        document.getElementById('barError').style.width = '0%';
+        document.getElementById('barWarn').style.width = '0%';
+        document.getElementById('barInfo').style.width = '0%';
     }
 
     // --- TEKİL MOD İŞLEVLERİ & STATS GÜNCELLEME ---
@@ -1004,7 +1052,6 @@
                     document.getElementById('barInfo').style.width = '0%';
                 }
 
-                // Grafikleri Güncelle
                 updateCharts(err, warn, info);
             }
         } catch (err) {
@@ -1084,6 +1131,7 @@
         currentEnvId = id;
         document.getElementById('selectedEnvBadge').className = 'badge bg-primary';
         document.getElementById('selectedEnvBadge').innerText = 'Seçili: ' + name;
+        document.getElementById('btnClearSelection').disabled = false;
         document.getElementById('btnFetchLogs').disabled = false;
         document.getElementById('btnHealthCheck').disabled = false;
         document.getElementById('btnStreamToggle').disabled = false;
@@ -1310,6 +1358,74 @@
 
     function escapeHtml(t) {
         return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    // Hazır regex kalıbını Linux Grep inputuna yazar ve aramayı başlatır
+    function applyRegexTemplate(regexPattern) {
+        const input = document.getElementById('keywordInput');
+        input.value = regexPattern;
+        triggerServerGrep('');
+    }
+
+    // Konsoldaki logları hem tarih hem saat (YYYY-MM-DDTHH:mm) aralığına göre süzer
+    function filterLogsByDateTimeRange() {
+        const startVal = document.getElementById('filterStartTime').value;
+        const endVal = document.getElementById('filterEndTime').value;
+
+        if (!rawLogContent) {
+            showToast('Süzecek log bulunmuyor! Önce bir dosya açın veya log çekin.');
+            return;
+        }
+
+        if (!startVal && !endVal) {
+            showToast('Lütfen başlangıç veya bitiş zamanı seçiniz.');
+            return;
+        }
+
+        const startDate = startVal ? new Date(startVal).getTime() : null;
+        const endDate = endVal ? new Date(endVal).getTime() : null;
+
+        const lines = rawLogContent.split('\n');
+        const filteredLines = lines.filter(line => {
+            // ISO formatındaki tarih ve saati yakalar (Örn: 2026-09-08T13:56:39 veya 2026-09-08 13:56:39)
+            const matchIso = line.match(/\b(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2})?)\b/);
+            
+            if (matchIso) {
+                const logTime = new Date(matchIso[1].replace(' ', 'T')).getTime();
+                if (!isNaN(logTime)) {
+                    const isAfter = !startDate || logTime >= startDate;
+                    const isBefore = !endDate || logTime <= endDate;
+                    return isAfter && isBefore;
+                }
+            }
+
+            // Sadece saat formatı varsa bugünün tarihiyle kıyasla
+            const matchTime = line.match(/\b([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?\b/);
+            if (matchTime) {
+                const todayStr = new Date().toISOString().split('T')[0];
+                const logTime = new Date(`${todayStr}T${matchTime[0]}`).getTime();
+                if (!isNaN(logTime)) {
+                    const isAfter = !startDate || logTime >= startDate;
+                    const isBefore = !endDate || logTime <= endDate;
+                    return isAfter && isBefore;
+                }
+            }
+
+            return true; // Zaman damgası içermeyen stacktrace satırlarını gizleme
+        });
+
+        document.getElementById('outputConsole').innerHTML = formatLogString(filteredLines.join('\n'));
+        document.getElementById('activeProcess').innerText = `Tarih/Saat süzgeci aktif (${startVal || '...'} - ${endVal || '...'})`;
+        showToast(`Süzme tamamlandı: ${filteredLines.length} satır listeleniyor.`, false);
+    }
+
+    function resetDateTimeFilter() {
+        document.getElementById('filterStartTime').value = '';
+        document.getElementById('filterEndTime').value = '';
+        if (rawLogContent) {
+            document.getElementById('outputConsole').innerHTML = formatLogString(rawLogContent);
+            document.getElementById('activeProcess').innerText = 'Tarih filtresi kaldırıldı';
+        }
     }
 </script>
 </body>

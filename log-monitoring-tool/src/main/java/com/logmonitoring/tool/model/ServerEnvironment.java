@@ -18,7 +18,9 @@ public class ServerEnvironment {
 
     private String name;           // Örn: Test 1, Test 2
     private String host;           // Örn: 10.248.67.233
+    @Builder.Default
     private Integer port = 22;     // Varsayılan SSH portu
+   
     private String username;
     private String password;
     private String logFilePath;    // Örn: /appdata/.../oim_m1/logs/oim_m1.out
