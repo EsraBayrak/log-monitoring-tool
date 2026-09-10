@@ -13,8 +13,8 @@ import lombok.*;
 public class ServerEnvironment {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+@GeneratedValue(strategy = GenerationType.AUTO)
+private Long id;
 
     private String name;           // Örn: Test 1, Test 2
     private String host;           // Örn: 10.248.67.233
