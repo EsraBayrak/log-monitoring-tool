@@ -1,67 +1,32 @@
 package com.logmonitoring.tool.exception;
 
-import com.jcraft.jsch.JSchException;
 import com.logmonitoring.tool.dto.ApiErrorDto;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import java.util.NoSuchElementException;
+import java.time.LocalDateTime;
 
-@RestControllerAdvice
+@ControllerAdvice
 public class GlobalExceptionHandler {
-
-    @ExceptionHandler(JSchException.class)
-    public ResponseEntity<ApiErrorDto> handleJSchException(JSchException ex, HttpServletRequest request) {
-        ApiErrorDto error = new ApiErrorDto(
-                HttpStatus.BAD_GATEWAY.value(),
-                "SSH_CONNECTION_ERROR",
-                "Uzak sunucuya SSH bağlantısı kurulamadı: " + ex.getMessage(),
-                request.getRequestURI()
-        );
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(error);
-    }
-
-    @ExceptionHandler(NoSuchElementException.class)
-    public ResponseEntity<ApiErrorDto> handleNotFoundException(NoSuchElementException ex, HttpServletRequest request) {
-        ApiErrorDto error = new ApiErrorDto(
-                HttpStatus.NOT_FOUND.value(),
-                "RESOURCE_NOT_FOUND",
-                ex.getMessage(),
-                request.getRequestURI()
-        );
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
-    }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorDto> handleGeneralException(Exception ex, HttpServletRequest request) {
         ApiErrorDto error = new ApiErrorDto(
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
-                "INTERNAL_SERVER_ERROR",
-                "Sunucuda beklenmedik bir hata oluştu: " + ex.getMessage(),
+                "INTERNAL_ERROR",
+                ex.getMessage() != null ? ex.getMessage() : "Sunucuda beklenmedik bir hata oluştu",
                 request.getRequestURI()
         );
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+
+        HttpHeaders headers = new HttpHeaders();
+        // SSE akışı sırasında patlamayı önlemek için Content-Type'ı kesin olarak JSON yapıyoruz:
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        return new ResponseEntity<>(error, headers, HttpStatus.INTERNAL_SERVER_ERROR);
     }
-
-    @ExceptionHandler(org.springframework.web.bind.MethodArgumentNotValidException.class)
-public ResponseEntity<ApiErrorDto> handleValidationExceptions(
-        org.springframework.web.bind.MethodArgumentNotValidException ex,
-        jakarta.servlet.http.HttpServletRequest request) {
-    
-    String firstError = ex.getBindingResult().getFieldErrors().stream()
-            .map(err -> err.getField() + ": " + err.getDefaultMessage())
-            .findFirst()
-            .orElse("Geçersiz girdi parametresi.");
-
-    ApiErrorDto error = new ApiErrorDto(
-            HttpStatus.BAD_REQUEST.value(),
-            "Girdi Doğrulama Hatası",
-            firstError,
-            request.getRequestURI()
-    );
-    return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
-}
 }

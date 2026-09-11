@@ -4,11 +4,11 @@ import com.logmonitoring.tool.dto.LogStatsDto;
 import com.logmonitoring.tool.service.LogService;
 
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity; // <-- Eklendi
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
-
 
 @RestController
 @RequestMapping("/api")
@@ -57,11 +57,18 @@ public class LogController {
         return logService.checkServerHealth(envId);
     }
    
-   // @Hidden
-    //@Operation(summary = "Gerçek zamanlı canlı log akışı sağlar (SSE Stream)")
     @GetMapping(value = "/logs/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamLogs(@RequestParam Long envId) {
         return logService.streamLiveLogs(envId);
     } 
 
+    @GetMapping("/logs/context-search") // <-- Düzeltildi (/api/logs/context-search olarak dinler)
+    public ResponseEntity<String> searchWithContext(
+            @RequestParam Long envId,
+            @RequestParam(defaultValue = "ALL") String fileName,
+            @RequestParam String searchTerm,
+            @RequestParam(defaultValue = "15") int contextLines) {
+        String result = logService.searchLogsWithContext(envId, fileName, searchTerm, contextLines);
+        return ResponseEntity.ok(result);
+    }
 }

@@ -169,9 +169,7 @@
                 <input type="radio" class="btn-check" name="viewMode" id="multiModeRadio" onchange="switchViewMode('multi')">
                 <label class="btn btn-outline-secondary" for="multiModeRadio">Çoklu İzleme Modu (Grid)</label>
             </div>
-            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addEnvModal">
-                + Yeni Sunucu Ekle
-            </button>
+            
         </div>
     </div>
 
@@ -250,6 +248,9 @@
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <span class="fw-bold small text-muted" id="serverSelectionTitle">Kayıtlı Sunucular (Seçim & Yönetim):</span>
                 <div class="d-flex gap-2 align-items-center">
+                    <button class="btn btn-sm btn-primary" onclick="openNewServerModal()">
+                                ➕ Yeni Sunucu Ekle
+                            </button>
                     <button id="btnClearSelection" class="btn btn-outline-secondary btn-sm py-0" onclick="clearServerSelection()" disabled>
                         ✖️ Seçimi Temizle
                     </button>
@@ -272,159 +273,193 @@
         </div>
     </div>
 
-    <!-- TEK SUNUCU KONTROLLERİ -->
+   <!-- TEK SUNUCU KONTROLLERİ -->
     <div id="singleModeControls">
-        <!-- Dosya Explorer & Parametrik Uzantı Filtresi -->
-        <div class="card shadow-sm mb-3">
-            <div class="card-body py-2 bg-white">
-                <div class="row g-2 align-items-center">
-                    <div class="col-md-3">
-                        <div class="input-group input-group-sm">
-                            <span class="input-group-text fw-bold">Uzantı:</span>
-                            <select id="extensionFilter" class="form-select" onchange="reloadFileList()">
-                                <option value="ALL">Tümü (*.*)</option>
-                                <option value=".out">Sadece .out</option>
-                                <option value=".log">Sadece .log</option>
-                                <option value=".xml">Sadece .xml</option>
-                            </select>
+
+        <!-- SEKME MENÜSÜ (Nav Tabs) -->
+        <ul class="nav nav-tabs mb-3 fw-bold" id="logTabMenu" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active text-danger" id="live-stream-tab" data-bs-toggle="tab" data-bs-target="#liveStreamTabPane" type="button" role="tab" aria-controls="liveStreamTabPane" aria-selected="true">
+                    🔴 Canlı Akış (tail -f & SSE)
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link text-primary" id="history-search-tab" data-bs-toggle="tab" data-bs-target="#historySearchTabPane" type="button" role="tab" aria-controls="historySearchTabPane" aria-selected="false">
+                    🔍 Geçmiş Log Arama & Trace (Grep / Context)
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="logTabContent">
+            
+            <!-- 1. SEKME: CANLI AKIŞ PANELİ -->
+            <div class="tab-pane fade show active" id="liveStreamTabPane" role="tabpanel" aria-labelledby="live-stream-tab">
+                <div class="card shadow-sm mb-3">
+                    <div class="card-body py-2 bg-white">
+                        <div class="row g-2 align-items-center">
+                            <div class="col-md-3">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text fw-bold text-primary">🆔 Session ID:</span>
+                                    <input type="text" id="liveSessionIdInput" class="form-control" placeholder="Oturum Filtresi (Session)">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text fw-bold text-success">📱 MSISDN:</span>
+                                    <input type="text" id="liveMsisdnInput" class="form-control" placeholder="Abone No (MSISDN)">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">Kelime:</span>
+                                    <input type="text" id="liveKeywordInput" class="form-control" placeholder="Örn: exception test">
+                                </div>
+                            </div>
+                            <div class="col-md-3 d-flex gap-2 justify-content-end">
+                                <button id="btnStreamToggle" class="btn btn-sm btn-outline-danger" onclick="toggleLogStream()" disabled>
+                                    🔴 Canlı Akış (tail -f)
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="clearLiveConsole()">
+                                    Konsolu Temizle
+                                </button>
+                            </div>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="input-group input-group-sm">
-                            <span class="input-group-text fw-bold">Dosya:</span>
-                            <select id="fileDropdown" class="form-select" disabled>
-                                <option value="">Önce bir sunucu seçiniz...</option>
-                            </select>
+                </div>
+                <!-- Canlı Akış Konsolu -->
+                <div class="card shadow-sm" id="liveConsoleCard">
+                    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-secondary" id="liveConsoleEnvBadge">Sunucu Seçilmedi</span>
+                            <span id="streamIndicator" class="badge bg-success d-none"><span class="live-dot"></span>CANLI AKIŞ AKTİF</span>
+                        </div>
+                        <button class="btn btn-sm btn-outline-light py-0" onclick="downloadLogFile('live')">📥 Akışı İndir</button>
+                    </div>
+                    <div class="card-body p-0">
+                        <pre id="outputConsole" class="console-box m-0 p-3"></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. SEKME: GEÇMİŞ LOG ARAMA PANELİ -->
+            <div class="tab-pane fade" id="historySearchTabPane" role="tabpanel" aria-labelledby="history-search-tab">
+                <!-- Dosya Explorer & Parametrik Filtre -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-body py-2 bg-white">
+                        <div class="row g-2 align-items-center">
+                            <div class="col-md-3">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text fw-bold">Uzantı:</span>
+                                    <select id="extensionFilter" class="form-select" onchange="reloadFileList()">
+                                        <option value="ALL">Tümü (*.*)</option>
+                                        <option value=".out">Sadece .out</option>
+                                        <option value=".log">Sadece .log</option>
+                                        <option value=".xml">Sadece .xml</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text fw-bold">Dosya:</span>
+                                    <select id="fileDropdown" class="form-select" disabled>
+                                        <option value="">Önce bir sunucu seçiniz...</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6 d-flex gap-2 justify-content-end align-items-center flex-wrap">
+                                <button id="btnReadSelectedFile" class="btn btn-sm btn-info text-white" onclick="fetchSelectedFile()" disabled>
+                                    Dosyayı Aç
+                                </button>
+                                <button id="btnFetchLogs" class="btn btn-sm btn-success" onclick="fetchTailLogs()" disabled>
+                                    Son 100 Satır
+                                </button>
+                            </div>
                         </div>
                     </div>
-                    <div class="col-md-6 d-flex gap-2 justify-content-end align-items-center flex-wrap">
-                        <button id="btnStreamToggle" class="btn btn-sm btn-outline-danger" onclick="toggleLogStream()" disabled>
-                            🔴 Canlı Akış (tail -f)
-                        </button>
-                        <button id="btnReadSelectedFile" class="btn btn-sm btn-info text-white" onclick="fetchSelectedFile()" disabled>
-                            Dosyayı Aç
-                        </button>
-                        <button id="btnFetchLogs" class="btn btn-sm btn-success" onclick="fetchTailLogs()" disabled>
-                            Son 100 Satır
-                        </button>
-                    </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Linux Grep, Hızlı Etiketler & Arama Geçmişi -->
-        <div class="card shadow-sm mb-3">
-            <div class="card-body py-2 bg-white">
-        
- <!-- Kurumsal Telekom İzleme: SessionId & MSISDN Filtresi -->
-<div class="row g-2 align-items-center mb-2 p-2 bg-light rounded border">
-    <div class="col-md-4">
-        <div class="input-group input-group-sm">
-            <span class="input-group-text fw-bold text-primary">🆔 Session ID:</span>
-            <input type="text" id="sessionIdInput" class="form-control" 
-                   placeholder="Örn: 9c8b7f2a veya SESSION_123"
-                   onkeydown="if(event.key==='Enter') triggerServerGrep('')">
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="input-group input-group-sm">
-            <span class="input-group-text fw-bold text-success">📱 MSISDN:</span>
-            <input type="text" id="msisdnInput" class="form-control" 
-                   placeholder="Örn: 905321234567"
-                   onkeydown="if(event.key==='Enter') triggerServerGrep('')">
-        </div>
-    </div>
-    <div class="col-md-4 d-flex gap-1 justify-content-end">
-        <button class="btn btn-sm btn-primary w-100" onclick="triggerServerGrep('')">
-            🔍 Oturum / Abone İzini Çek (Trace)
-        </button>
-        <button class="btn btn-sm btn-outline-secondary" onclick="clearTraceInputs()" title="Sıfırla">
-            ✕
-        </button>
-    </div>
-</div>
+                <!-- SessionID, MSISDN, Grep ve Context Arama -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-body py-2 bg-white">
+                        <!-- Kurumsal Telekom İzleme: SessionId & MSISDN Filtresi -->
+                        <div class="row g-2 align-items-center mb-2 p-2 bg-light rounded border">
+                            <div class="col-md-4">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text fw-bold text-primary">🆔 Session ID:</span>
+                                    <input type="text" id="sessionIdInput" class="form-control" 
+                                           placeholder="Örn: 9c8b7f2a veya SESSION_123"
+                                           onkeydown="if(event.key==='Enter') triggerServerGrep('')">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text fw-bold text-success">📱 MSISDN:</span>
+                                    <input type="text" id="msisdnInput" class="form-control" 
+                                           placeholder="Örn: 905321234567"
+                                           onkeydown="if(event.key==='Enter') triggerServerGrep('')">
+                                </div>
+                            </div>
+                            <div class="col-md-4 d-flex gap-1 justify-content-end">
+                                <button class="btn btn-sm btn-primary w-50" onclick="triggerServerGrep('')">
+                                    🔍 Trace
+                                </button>
+                                <button class="btn btn-sm btn-warning text-dark fw-bold w-50" onclick="triggerContextGrep(15)" title="Bulunan eşleşmenin öncesindeki ve sonrasındaki 15 satırı getirir">
+                                    🎯 ±15 Satır Context
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="clearTraceInputs()" title="Sıfırla">
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
 
-                <div class="row g-2 align-items-center mb-2">
-                    <div class="col-md-5">
-                        <div class="input-group input-group-sm">
-                            <span class="input-group-text">Linux Grep:</span>
-                            <input type="text" id="keywordInput" class="form-control" 
-                                   placeholder="Sunucuda ara (Örn: NullPointerException, UserNotFound)..."
-                                   onkeydown="if(event.key==='Enter') triggerServerGrep('')">
+                        <!-- Normal Grep & Hızlı Etiketler -->
+                        <div class="row g-2 align-items-center mb-2">
+                            <div class="col-md-5">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">Linux Grep:</span>
+                                    <input type="text" id="keywordInput" class="form-control" 
+                                           placeholder="Sunucuda ara (Örn: NullPointerException, UserNotFound)..."
+                                           onkeydown="if(event.key==='Enter') triggerServerGrep('')">
+                                </div>
+                            </div>
+                            <div class="col-md-7 d-flex gap-2 align-items-center justify-content-end flex-wrap">
+                                <button class="btn btn-sm btn-outline-danger" onclick="triggerServerGrep('ERROR')">Grep ERROR</button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="triggerServerGrep('WARN')">Grep WARN</button>
+                                <button class="btn btn-sm btn-outline-success" onclick="triggerServerGrep('INFO')">Grep INFO</button>
+                                <button class="btn btn-sm btn-dark" onclick="triggerServerGrep('')">Grep Ara</button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="clearFilters()">Temizle</button>
+                            </div>
+                        </div>
+
+                        <!-- Hızlı Arama Etiketleri -->
+                        <div class="d-flex align-items-center gap-2 pt-1 border-top mb-1 flex-wrap">
+                            <span class="small text-secondary fw-bold">Hızlı Etiketler:</span>
+                            <span class="badge border quick-tag" style="background-color: #212529; color: #f8f9fa; cursor: pointer;" onclick="applyQuickTag('Exception')">⚡ Exception</span>
+                            <span class="badge border quick-tag" style="background-color: #212529; color: #f8f9fa; cursor: pointer;" onclick="applyQuickTag('SOAP')">📡 SOAP</span>
+                            <span class="badge border quick-tag" style="background-color: #212529; color: #f8f9fa; cursor: pointer;" onclick="applyQuickTag('Timeout')">⏱️ Timeout</span>
+                            <span class="badge border quick-tag" style="background-color: #212529; color: #f8f9fa; cursor: pointer;" onclick="applyQuickTag('ORA-')">🗄️ ORA-</span>
+                            <span class="badge border quick-tag" style="background-color: #212529; color: #f8f9fa; cursor: pointer;" onclick="applyQuickTag('NullPointer')">🎯 NullPointer</span>
                         </div>
                     </div>
-                    <div class="col-md-7 d-flex gap-2 align-items-center justify-content-end flex-wrap">
-                        <button class="btn btn-sm btn-outline-danger" onclick="triggerServerGrep('ERROR')">Grep ERROR</button>
-                        <button class="btn btn-sm btn-outline-warning" onclick="triggerServerGrep('WARN')">Grep WARN</button>
-                        <button class="btn btn-sm btn-outline-success" onclick="triggerServerGrep('INFO')">Grep INFO</button>
-                        <button class="btn btn-sm btn-dark" onclick="triggerServerGrep('')">Grep Ara</button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="clearFilters()">Temizle</button>
-                    </div>
-                </div>
-                <!-- Hızlı Arama Etiketleri -->
-                <div class="d-flex align-items-center gap-2 pt-1 border-top mb-1">
-                    <span class="small text-muted fw-bold">Hızlı Etiketler:</span>
-                    <span class="badge bg-light text-dark border quick-tag" onclick="applyQuickTag('Exception')">⚡ Exception</span>
-                    <span class="badge bg-light text-dark border quick-tag" onclick="applyQuickTag('SOAP')">📡 SOAP</span>
-                    <span class="badge bg-light text-dark border quick-tag" onclick="applyQuickTag('Timeout')">⏱️ Timeout</span>
-                    <span class="badge bg-light text-dark border quick-tag" onclick="applyQuickTag('SQLException')">💾 SQLException</span>
-                    <span class="badge bg-light text-dark border quick-tag" onclick="applyQuickTag('NullPointer')">🎯 NullPointer</span>
-                </div>
-                <!-- Son Aramalar -->
-                <div class="d-flex align-items-center gap-2 pt-1">
-                    <span class="small text-muted fw-bold">Son Aramalar:</span>
-                    <div id="searchHistoryChips" class="d-flex gap-1 flex-wrap">
-                        <span class="text-muted small">Henüz arama yapılmadı.</span>
-                    </div>
                 </div>
 
-                <!-- Gelişmiş Regex Şablonları & Tarih/Saat Aralığı Süzgeci -->
-                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 pt-2 mt-1 border-top">
-                    <div class="d-flex align-items-center gap-1 flex-wrap">
-                        <span class="small text-muted fw-bold">Regex Şablonları:</span>
-                        <span class="badge bg-dark quick-tag" onclick="applyRegexTemplate('ERROR|WARN')">⚠️ Hata & Uyarı</span>
-                        <span class="badge bg-dark quick-tag" onclick="applyRegexTemplate('([a-zA-Z0-9_]+Exception)')">💥 Exception</span>
-                        <span class="badge bg-dark quick-tag" onclick="applyRegexTemplate('\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b')">🌐 IP Bulucu</span>
-                        <span class="badge bg-dark quick-tag" onclick="applyRegexTemplate('timeout|refused|failed|connection')">⏳ Bağlantı Hataları</span>
+                <!-- Arama Sonuçları Konsolu (Geçmiş Aramalar İçin Ayrı Konsol) -->
+                <div class="card shadow-sm">
+                    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-info">Arama Sonuçları</span>
+                            <span id="activeProcess" class="text-info small"></span>
+                        </div>
+                        <button class="btn btn-sm btn-outline-light py-0" onclick="clearSearchConsole()">Temizle</button>
                     </div>
-                    <div class="d-flex align-items-center gap-1 flex-wrap">
-                        <span class="small text-muted fw-bold">Tarih/Saat Aralığı:</span>
-                        <input type="datetime-local" id="filterStartTime" class="form-control form-control-sm" style="width: 175px;" title="Başlangıç Tarih ve Saati">
-                        <span class="small text-muted">-</span>
-                        <input type="datetime-local" id="filterEndTime" class="form-control form-control-sm" style="width: 175px;" title="Bitiş Tarih ve Saati">
-                        <button type="button" class="btn btn-sm btn-primary py-0" onclick="filterLogsByDateTimeRange()">Süz</button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary py-0" onclick="resetDateTimeFilter()">Sıfırla</button>
+                    <div class="card-body p-0">
+                        <pre id="searchOutputConsole" class="console-box m-0 p-3 text-secondary">Arama yapmak için yukarıdaki filtreleri kullanıp "Trace", "Grep" veya "Context" butonuna basınız.</pre>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Terminal Konsolu -->
-        <div class="card shadow-sm" id="mainConsoleCard">
-            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-2">
-                <div class="d-flex align-items-center gap-2">
-                    <span id="selectedEnvBadge" class="badge bg-secondary">Sunucu Seçilmedi</span>
-                    <span id="streamIndicator" class="badge bg-success d-none"><span class="live-dot"></span>CANLI AKIŞ AKTİF</span>
-                    <span id="activeProcess" class="text-info small"></span>
-                </div>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-sm btn-outline-light py-0" onclick="toggleFullscreenConsole()" title="Tam Ekran">⛶ Tam Ekran</button>
-                    <button class="btn btn-sm btn-outline-info py-0" onclick="downloadLogFile()" title="Logları İndir">📥 Log İndir (.log)</button>
-                    <button class="btn btn-sm btn-outline-light py-0" onclick="clearConsole()">Ekranı Temizle</button>
-                </div>
-            </div>
-            <div class="card-body p-0">
-                <div id="emptyStateBox" class="empty-state">
-                    <svg fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-12-3h8v2H8v-2zm0-4h8v2H8v-2z"/>
-                    </svg>
-                    <p class="mb-0 fw-bold">Canlı Log İzlemeye Başlayın</p>
-                    <span class="small">Lütfen yukarıdaki menüden bir sunucu seçiniz.</span>
-                </div>
-                <pre id="outputConsole" class="console-box m-0 p-3 d-none"></pre>
-            </div>
-        </div>
-    </div>
+        </div> <!-- tab-content bitişi -->
+    </div> <!-- singleModeControls bitişi -->
 
     <!-- ÇOKLU SUNUCU KONSOL IZGARASI -->
     <div id="multiModeContainer" class="d-none">
@@ -708,26 +743,49 @@
 
     function renderEnvironmentBar() {
         const container = document.getElementById('envButtonsContainer');
+        const countBadge = document.getElementById('serverCountBadge');
+        if (countBadge) {
+            countBadge.innerText = `${allEnvironments.length} Sunucu`;
+        }
+
         container.innerHTML = '';
 
+        // EMPTY STATE: Eğer veritabanında henüz kayıtlı sunucu yoksa
+        if (!allEnvironments || allEnvironments.length === 0) {
+            container.innerHTML = `
+                <div class="w-100 py-3 text-center border border-dashed rounded bg-light">
+                    <p class="text-muted small mb-2 fw-semibold">Sistemde henüz kayıtlı bir sunucu ortamı bulunmuyor.</p>
+                    <button class="btn btn-sm btn-primary shadow-sm" onclick="openNewServerModal()">
+                        ➕ İlk Sunucuyu Tanımla
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        // Sunucular varsa moda göre listele (Tekil Buton veya Çoklu Checkbox)
         if (currentMode === 'single') {
-            document.getElementById('btnMultiStreamToggle').classList.add('d-none');
+            const btnMulti = document.getElementById('btnMultiStreamToggle');
+            if (btnMulti) btnMulti.classList.add('d-none');
+
             allEnvironments.forEach(env => {
                 const btn = document.createElement('button');
-                btn.className = `btn btn-sm ${currentEnvId === env.id ? 'btn-primary' : 'btn-outline-primary'} env-btn px-3 py-2`;
+                btn.className = `btn btn-sm ${currentEnvId === env.id ? 'btn-primary' : 'btn-outline-primary'} env-btn`;
                 btn.innerText = env.name;
                 btn.onclick = (e) => selectEnvironment(env.id, env.name, e.target);
                 container.appendChild(btn);
             });
         } else {
-            document.getElementById('btnMultiStreamToggle').classList.remove('d-none');
+            const btnMulti = document.getElementById('btnMultiStreamToggle');
+            if (btnMulti) btnMulti.classList.remove('d-none');
+
             allEnvironments.forEach(env => {
                 const wrapper = document.createElement('div');
-                wrapper.className = 'form-check form-check-inline bg-white px-3 py-2 border rounded shadow-sm';
+                wrapper.className = 'form-check form-check-inline bg-white px-3 py-1 rounded border shadow-sm me-2 mb-2';
                 wrapper.innerHTML = `
-                    <input class="form-check-input" type="checkbox" id="chk_${env.id}" value="${env.id}" 
+                    <input class="form-check-input" type="checkbox" id="chk_${env.id}" 
                            ${selectedMultiEnvIds.has(env.id) ? 'checked' : ''} onchange="toggleMultiEnvSelection(${env.id})">
-                    <label class="form-check-label fw-bold small" for="chk_${env.id}">${env.name} <span class="text-muted small">(${env.host})</span></label>
+                    <label class="form-check-label fw-bold small" for="chk_${env.id}">${env.name}</label>
                 `;
                 container.appendChild(wrapper);
             });
@@ -922,14 +980,18 @@
         }
     }
 
+    const MAX_BUFFER_LINES = 1000; 
+
     function startSingleLogStream() {
         if (!currentEnvId) return;
         stopSingleLogStream();
 
         showConsole();
         const consoleEl = document.getElementById('outputConsole');
-        consoleEl.innerHTML = '<span class="text-info">[SSE Stream Bağlantısı Kuruluyor (tail -f)...]</span>\n';
-        rawLogContent = '';
+        consoleEl.innerHTML = ''; // Temiz başlangıç
+        const initNotice = document.createElement('div');
+        initNotice.innerHTML = '<span class="text-info">[SSE Stream Bağlantısı Kuruluyor (tail -f)...]</span>';
+        consoleEl.appendChild(initNotice);
 
         document.getElementById('btnStreamToggle').className = 'btn btn-sm btn-danger';
         document.getElementById('btnStreamToggle').innerText = '⏹️ Akışı Durdur';
@@ -939,10 +1001,27 @@
 
         singleEventSource.addEventListener('log', (event) => {
             const line = event.data;
-            rawLogContent += line + '\n';
-            consoleEl.innerHTML += formatSingleLine(line) + '\n';
+
+            // Filtre kutusunda bir şey yazıyorsa sadece eşleşeni ekrana bas (SessionID / MSISDN / ERROR)
+            const filterVal = document.getElementById('liveFilterInput') ? document.getElementById('liveFilterInput').value.trim() : '';
+            if (filterVal && !line.toLowerCase().includes(filterVal.toLowerCase())) {
+                return;
+            }
+
+            // 1. Yeni log satırı elemanını oluştur
+            const lineDiv = document.createElement('div');
+            lineDiv.innerHTML = formatSingleLine(line);
+            consoleEl.appendChild(lineDiv);
+
+            // 2. 1000 Satırlık Dinamik Bellek Tamponu (Sliding Buffer)
+            while (consoleEl.childElementCount > MAX_BUFFER_LINES) {
+                consoleEl.removeChild(consoleEl.firstElementChild);
+            }
+
+            // 3. Otomatik aşağı kaydır
             consoleEl.scrollTop = consoleEl.scrollHeight;
 
+            // Kritik alert kontrolü
             const up = line.toUpperCase();
             if (up.includes('OUTOFMEMORY') || up.includes('FATAL') || up.includes('CRITICAL')) {
                 const env = allEnvironments.find(e => e.id === currentEnvId);
@@ -955,7 +1034,7 @@
             showToast('Canlı akış bağlantısı kesildi veya zaman aşımına uğradı.');
         };
 
-        showToast('Gerçek zamanlı SSE akışı başlatıldı (tail -f)', false);
+        showToast('Gerçek zamanlı SSE akışı başlatıldı (1000 Satır Tamponlu)', false);
     }
 
     function stopSingleLogStream() {
@@ -1189,8 +1268,11 @@
     async function selectEnvironment(id, name, targetBtn) {
         stopSingleLogStream();
         currentEnvId = id;
-        document.getElementById('selectedEnvBadge').className = 'badge bg-primary';
-        document.getElementById('selectedEnvBadge').innerText = 'Seçili: ' + name;
+        const liveBadge = document.getElementById('liveConsoleEnvBadge');
+        if (liveBadge) {
+            liveBadge.className = 'badge bg-primary';
+            liveBadge.innerText = 'Seçili: ' + name;
+        }
         document.getElementById('btnClearSelection').disabled = false;
         document.getElementById('btnFetchLogs').disabled = false;
         document.getElementById('btnHealthCheck').disabled = false;
@@ -1237,12 +1319,14 @@
         }
     }
 
+    // Arama çıktısını kendi sekmesindeki konsola yaz
     async function triggerServerGrep(level) {
         if (!currentEnvId) {
             showToast('Lütfen önce bir sunucu seçiniz!');
             return;
         }
-        stopSingleLogStream();
+        // stopSingleLogStream(); -> ARTIK CANLI AKIŞI DURDURMUYORUZ! İkisi izole çalışıyor.
+        
         const fileName = document.getElementById('fileDropdown').value;
         const keyword = document.getElementById('keywordInput').value;
         const sessionId = document.getElementById('sessionIdInput') ? document.getElementById('sessionIdInput').value : '';
@@ -1252,27 +1336,65 @@
         if (sessionId) saveSearchHistory('Session:' + sessionId);
         if (msisdn) saveSearchHistory('MSISDN:' + msisdn);
 
-        let traceDesc = [];
-        if (level) traceDesc.push(`Seviye: ${level}`);
-        if (sessionId) traceDesc.push(`SessionID: "${sessionId}"`);
-        if (msisdn) traceDesc.push(`MSISDN: "${msisdn}"`);
-        if (keyword) traceDesc.push(`Metin: "${keyword}"`);
-
-        setConsoleStatus('Grep çalıştırılıyor...', `Sunucuda aranıyor (${traceDesc.join(' | ') || 'Tümü'})`);
+        const consoleBox = document.getElementById('searchOutputConsole');
+        consoleBox.innerHTML = '<span class="text-info">[Sunucuda Grep Çalıştırılıyor...]</span>';
 
         try {
             const url = `/api/search-grep?envId=${currentEnvId}&fileName=${encodeURIComponent(fileName)}&level=${encodeURIComponent(level || '')}&keyword=${encodeURIComponent(keyword || '')}&sessionId=${encodeURIComponent(sessionId || '')}&msisdn=${encodeURIComponent(msisdn || '')}&lineLimit=200`;
             const res = await fetch(url);
             rawLogContent = await res.text();
-            showConsole();
-            document.getElementById('outputConsole').innerHTML = formatLogString(rawLogContent);
-            document.getElementById('activeProcess').innerText = `İzleme tamamlandı (${new Date().toLocaleTimeString()})`;
+            
+            consoleBox.innerHTML = formatLogString(rawLogContent);
+            document.getElementById('activeProcess').innerText = `Arama tamamlandı (${new Date().toLocaleTimeString()})`;
             updateDashboardStats(currentEnvId);
         } catch (err) {
-            showConsole();
-            document.getElementById('outputConsole').innerHTML = `<span class="text-danger">[Hata]: ${err}</span>`;
+            consoleBox.innerHTML = `<span class="text-danger">[Hata]: ${err}</span>`;
             showToast('Grep işlemi sırasında hata oluştu.');
         }
+    }
+
+    // Context araması çıktısını da arama konsoluna yaz
+    async function triggerContextGrep(contextLines = 15) {
+        if (!currentEnvId) {
+            showToast('Lütfen önce bir sunucu seçiniz!');
+            return;
+        }
+        // stopSingleLogStream(); -> CANLI AKIŞ KESİNTİYE UĞRAMIYOR!
+
+        const fileName = document.getElementById('fileDropdown').value || 'ALL';
+        const sessionId = document.getElementById('sessionIdInput') ? document.getElementById('sessionIdInput').value.trim() : '';
+        const msisdn = document.getElementById('msisdnInput') ? document.getElementById('msisdnInput').value.trim() : '';
+        const keyword = document.getElementById('keywordInput').value.trim();
+        const searchTerm = sessionId || msisdn || keyword;
+
+        if (!searchTerm) {
+            showToast('Lütfen Session ID, MSISDN veya anahtar kelime girin!');
+            return;
+        }
+
+        const consoleBox = document.getElementById('searchOutputConsole');
+        consoleBox.innerHTML = `<span class="text-warning">[±${contextLines} Satır Context Aranıyor: "${searchTerm}"]</span>`;
+
+        try {
+            const url = `/api/logs/context-search?envId=${currentEnvId}&fileName=${encodeURIComponent(fileName)}&searchTerm=${encodeURIComponent(searchTerm)}&contextLines=${contextLines}`;
+            const res = await fetch(url);
+            rawLogContent = await res.text();
+
+            consoleBox.innerHTML = formatLogString(rawLogContent);
+            document.getElementById('activeProcess').innerText = `Bağlam Araması Tamamlandı (±${contextLines} satır)`;
+            showToast('Bağlam araması tamamlandı!', false);
+        } catch (err) {
+            consoleBox.innerHTML = `<span class="text-danger">[Hata]: ${err}</span>`;
+            showToast('Context araması sırasında hata oluştu.');
+        }
+    }
+
+    function clearSearchConsole() {
+        document.getElementById('searchOutputConsole').innerHTML = 'Arama sonuçları temizlendi.';
+    }
+
+    function clearLiveConsole() {
+        document.getElementById('outputConsole').innerHTML = '';
     }
 
     function clearTraceInputs() {
@@ -1445,13 +1567,13 @@
         triggerServerGrep('');
     }
 
-    // Konsoldaki logları hem tarih hem saat (YYYY-MM-DDTHH:mm) aralığına göre süzer
+    // Konsoldaki logları hem tarih hem saat (YYYY-MM-DDTHH:mm) aralığına göre ssorgular
     function filterLogsByDateTimeRange() {
         const startVal = document.getElementById('filterStartTime').value;
         const endVal = document.getElementById('filterEndTime').value;
 
         if (!rawLogContent) {
-            showToast('Süzecek log bulunmuyor! Önce bir dosya açın veya log çekin.');
+            showToast('Sorgulanacak log bulunmuyor! Önce bir dosya açın veya log çekin.');
             return;
         }
 
@@ -1490,8 +1612,8 @@
         });
 
         document.getElementById('outputConsole').innerHTML = formatLogString(filteredLines.join('\n'));
-        document.getElementById('activeProcess').innerText = `Tarih/Saat süzgeci aktif (${startVal || '...'} - ${endVal || '...'})`;
-        showToast(`Süzme tamamlandı: ${filteredLines.length} satır listeleniyor.`, false);
+        document.getElementById('activeProcess').innerText = `Tarih/Saat sorgusu aktif (${startVal || '...'} - ${endVal || '...'})`;
+        showToast(`Sorgu tamamlandı: ${filteredLines.length} satır listeleniyor.`, false);
     }
 
     function resetDateTimeFilter() {

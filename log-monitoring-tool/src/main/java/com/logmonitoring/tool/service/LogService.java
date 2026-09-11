@@ -119,7 +119,14 @@ public class LogService {
         // Aranacak tüm filtre kriterlerini listeye topla
         List<String> criteria = new ArrayList<>();
         if (!safeLevel.isBlank()) criteria.add(safeLevel);
-        if (!safeKeyword.isBlank()) criteria.add(safeKeyword);
+        if (!safeKeyword.isBlank()) {
+            String[] tokens = safeKeyword.split("\\s+");
+            for (String token : tokens) {
+                if (!token.isBlank()) {
+                    criteria.add(token);
+                }
+            }
+        }
         if (!safeSessionId.isBlank()) criteria.add(safeSessionId);
         if (!safeMsisdn.isBlank()) criteria.add(safeMsisdn);
 
@@ -285,5 +292,35 @@ public class LogService {
         session.setPassword(env.getPassword());
         session.setConfig("StrictHostKeyChecking", "no");
         return session;
+    }
+   // 1. Context grep komutunu üreten yardımcı metot
+    public String buildContextSearchCommand(String logFilePath, String searchTerm, int contextLines) {
+        String grepCmd = logFilePath.endsWith(".gz") ? "zgrep" : "grep";
+        // -n: Satır numarası, -C: Önceki ve sonraki X satır context, -m 5: İlk 5 eşleşme bloğu
+        return String.format("%s -n -C %d -m 5 \"%s\" %s", grepCmd, contextLines, searchTerm, logFilePath);
+    }
+
+    // 2. Controller'dan çağrılacak asıl context arama metodu
+    public String searchLogsWithContext(Long envId, String fileName, String searchTerm, int contextLines) {
+        ServerEnvironment env = environmentRepository.findById(envId).orElse(null);
+        if (env == null) {
+            return "[HATA] Sunucu tanımı bulunamadı (ID: " + envId + ")";
+        }
+
+        String safeSearchTerm = sanitizeInput(searchTerm);
+        if (safeSearchTerm.isBlank()) {
+            return "[HATA] Aranacak kelime / SessionID / MSISDN boş olamaz.";
+        }
+
+        String safeFileName = sanitizeInput(fileName);
+        String targetPath;
+        if (!safeFileName.isBlank() && !safeFileName.equalsIgnoreCase("ALL")) {
+            targetPath = env.getLogDirectoryPath() + "/" + safeFileName;
+        } else {
+            targetPath = env.getLogFilePath(); // Dosya seçilmediyse varsayılan log dosyası
+        }
+
+        String command = buildContextSearchCommand(targetPath, safeSearchTerm, contextLines);
+        return executeSshCommand(env, command);
     }
 }
