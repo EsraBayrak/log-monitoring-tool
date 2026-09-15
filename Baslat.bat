@@ -1,47 +1,41 @@
 @echo off
-chcp 65001 > nul
-title Log Monitoring Tool - Launcher
+setlocal enabledelayedexpansion
+title Log Monitoring Tool - Baslatici
 
-echo ============================================================
-echo   Log & Konfigurasyon Izleme Araci Baslatiliyor...
-echo ============================================================
-
-:: 1. Calisma dizinini .bat dosyasinin bulundugu klasore sabitle
 cd /d "%~dp0"
+echo ====================================================
+echo      LOG MONITORING TOOL BASLATILIYOR
+echo ====================================================
 
-:: Eger ic ice log-monitoring-tool klasoru varsa icine gir
-if exist "log-monitoring-tool\pom.xml" (
-    cd log-monitoring-tool
+:: 1. Eski 8085 portunu kullanan süreç varsa temizle
+echo [1/3] Port 8085 kontrol ediliyor...
+powershell -NoProfile -Command "$p = (Get-NetTCPConnection -LocalPort 8085 -ErrorAction SilentlyContinue).OwningProcess; if ($p) { Stop-Process -Id $p -Force; Write-Host 'Eski islem sonlandirildi.' }"
+
+:: 2. Spring Boot uygulamasini arka planda baslat
+echo [2/3] Spring Boot uygulamasi baslatiliyor...
+cd log-monitoring-tool
+start "Log Monitoring Backend" cmd /c "mvnw.cmd spring-boot:run"
+
+:: 3. Port 8085 hazir olana kadar bekle (Maksimum 60 saniye)
+echo [3/3] Uygulama hazir olana kadar bekleniyor...
+powershell -NoProfile -Command ^
+  "$timeout = 60; $timer = [Diagnostics.Stopwatch]::StartNew();" ^
+  "while ($timer.Elapsed.TotalSeconds -lt $timeout) {" ^
+  "  try {" ^
+  "    $client = New-Object System.Net.Sockets.TcpClient('127.0.0.1', 8085);" ^
+  "    $client.Close();" ^
+  "    exit 0;" ^
+  "  } catch {" ^
+  "    Start-Sleep -Milliseconds 800;" ^
+  "  }" ^
+  "}" ^
+  "exit 1;"
+
+if %ERRORLEVEL% EQU 0 (
+    echo Uygulama hazir! Tarayici aciliyor...
+    start http://localhost:8085/logMonitoring
+) else (
+    echo [UYARI] Zaman asimi! Uygulama henuz acilmamis olabilir, log konsolunu inceleyin.
 )
 
-:: 2. Java kontrolu
-java -version >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo [HATA] Java bulunamadi! Lutfen Java 21'in PATH'e ekli oldugundan emin olun.
-    pause
-    exit /b 1
-)
-
-:: 3. Maven Wrapper kontrolu
-if not exist "mvnw.cmd" (
-    echo [HATA] mvnw.cmd dosyasi bulunamadi!
-    echo Bulunulan Dizin: %cd%
-    pause
-    exit /b 1
-)
-
-:: 4. 8085 portunu kullanan eski surec varsa temizle
-powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8085 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
-
-:: 5. Tarayiciyi Spring Boot ayaga kalktiktan sonra ac (8 saniye gecikmeli)
-start "" powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 8; Start-Process 'http://localhost:8085/logMonitoring'"
-
-echo [BILGI] Uygulama baslatiliyor (Port: 8085)...
-echo [BILGI] Tarayici uygulama hazir olunca otomatik acilacak...
-
-call mvnw.cmd spring-boot:run
-
-if %ERRORLEVEL% NEQ 0 (
-    echo [HATA] Uygulama calisirken bir sorun olustu.
-    pause
-)
+exit
