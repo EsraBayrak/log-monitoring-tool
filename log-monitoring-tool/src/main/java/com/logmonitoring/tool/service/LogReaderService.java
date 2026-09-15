@@ -19,10 +19,11 @@ public class LogReaderService {
         return executeSshCommand(env, command);
     }
 
-    // 2. Sunucu Taraflı Güçlü Grep (Level, Keyword, SessionID, MSISDN Desteği)
-    public String searchLogsWithGrep(ServerEnvironment env, String fileName, String level, 
-                                     String keyword, String sessionId, String msisdn, int lineLimit) {
-        
+    // 2. Sunucu Tarafli Guclu Grep (Level, Keyword, SessionID, MSISDN, Zaman Araligi awk Destegi)
+    public String searchLogsWithGrep(ServerEnvironment env, String fileName, String level,
+                                     String keyword, String sessionId, String msisdn, 
+                                     String startTime, String endTime, int lineLimit) {
+
         String fullPath;
         if (fileName != null && !fileName.trim().isEmpty() && !fileName.equals("ALL")) {
             fullPath = getNormalizedDirPath(env.getLogDirectoryPath()) + fileName;
@@ -30,36 +31,42 @@ public class LogReaderService {
             fullPath = getNormalizedDirPath(env.getLogDirectoryPath()) + "*.{out,log}";
         }
 
-        // Ana arama deseni oluştur
-        List<String> patterns = new ArrayList<>();
+        StringBuilder cmd = new StringBuilder();
+
+        // 1. Asama: Zaman Araligi Filtresi (awk ile alfabetik/tarih karsilastirmasi)
+        if (startTime != null && !startTime.isBlank() && endTime != null && !endTime.isBlank()) {
+            String s = startTime.replace("T", " ");
+            String e = endTime.replace("T", " ");
+            cmd.append(String.format("awk -v s=\"%s\" -v e=\"%s\" '($1\" \"$2 >= s && $1\" \"$2 <= e)' %s", s, e, fullPath));
+        } else if (startTime != null && !startTime.isBlank()) {
+            String s = startTime.replace("T", " ");
+            cmd.append(String.format("awk -v s=\"%s\" '($1\" \"$2 >= s)' %s", s, fullPath));
+        } else {
+            cmd.append(String.format("cat %s", fullPath));
+        }
+
+        // 2. Asama: Seviye Filtresi (ERROR / WARN / INFO)
         if (level != null && !level.trim().isEmpty()) {
-            patterns.add(level.trim());
+            cmd.append(String.format(" | grep -iE \"\\b%s\\b\"", level.trim()));
         }
-        if (keyword != null && !keyword.trim().isEmpty()) {
-            patterns.add(keyword.trim());
-        }
+
+        // 3. Asama: Kurumsal Parametreler (SessionID, MSISDN)
         if (sessionId != null && !sessionId.trim().isEmpty()) {
-            patterns.add(sessionId.trim());
+            cmd.append(String.format(" | grep -F \"%s\"", sessionId.trim()));
         }
         if (msisdn != null && !msisdn.trim().isEmpty()) {
-            patterns.add(msisdn.trim());
+            cmd.append(String.format(" | grep -F \"%s\"", msisdn.trim()));
         }
 
-        // Eğer hiçbir filtre verilmemişse dosyanın son satırlarını dön
-        if (patterns.isEmpty()) {
-            return readSpecificFile(env, fileName != null && !fileName.equals("ALL") ? fileName : "oim_m1.out");
+        // 4. Asama: Serbest Kelime Aramasi (Boru hatti / AND mantigi)
+        if (keyword != null && !keyword.trim().isEmpty()) {
+            for (String term : keyword.trim().split("\\s+")) {
+                cmd.append(String.format(" | grep -iF \"%s\"", term));
+            }
         }
 
-        // İlk filtreyi dosya üzerinde çalıştır
-        StringBuilder cmd = new StringBuilder("grep -inE \"");
-        cmd.append(patterns.get(0)).append("\" ").append(fullPath);
-
-        // Ek filtreler varsa ardışık pipe ( | grep -iE "..." ) ile filtrele
-        for (int i = 1; i < patterns.size(); i++) {
-            cmd.append(" | grep -iE \"").append(patterns.get(i)).append("\"");
-        }
-
-        cmd.append(" 2>/dev/null | tail -n ").append(lineLimit > 0 ? lineLimit : 200);
+        // 5. Asama: Guvenlik & Limit
+        cmd.append(String.format(" 2>/dev/null | tail -n %d", lineLimit > 0 ? lineLimit : 200));
 
         return executeSshCommand(env, cmd.toString());
     }

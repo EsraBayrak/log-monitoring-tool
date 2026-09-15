@@ -280,12 +280,12 @@
         <ul class="nav nav-tabs mb-3 fw-bold" id="logTabMenu" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link active text-danger" id="live-stream-tab" data-bs-toggle="tab" data-bs-target="#liveStreamTabPane" type="button" role="tab" aria-controls="liveStreamTabPane" aria-selected="true">
-                    🔴 Canlı Akış (tail -f & SSE)
+                    🔴 Canlı İzleme
                 </button>
             </li>
             <li class="nav-item" role="presentation">
                 <button class="nav-link text-primary" id="history-search-tab" data-bs-toggle="tab" data-bs-target="#historySearchTabPane" type="button" role="tab" aria-controls="historySearchTabPane" aria-selected="false">
-                    🔍 Geçmiş Log Arama & Trace (Grep / Context)
+                    🔍 Log Sorgulama
                 </button>
             </li>
         </ul>
@@ -333,8 +333,15 @@
                             <span class="badge bg-secondary" id="liveConsoleEnvBadge">Sunucu Seçilmedi</span>
                             <span id="streamIndicator" class="badge bg-success d-none"><span class="live-dot"></span>CANLI AKIŞ AKTİF</span>
                         </div>
-                        <button class="btn btn-sm btn-outline-light py-0" onclick="downloadLogFile('live')">📥 Akışı İndir</button>
-                    </div>
+<div class="dropdown d-inline-block">
+  <button class="btn btn-sm btn-outline-light py-0 dropdown-toggle" type="button" id="exportDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+    📥 Logları Dışa Aktar
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="exportDropdown">
+    <li><a class="dropdown-item" href="javascript:void(0)" onclick="downloadLogFile('live', 'log')">📄 .log Formatında İndir</a></li>
+    <li><a class="dropdown-item" href="javascript:void(0)" onclick="downloadLogFile('live', 'txt')">📝 .txt Formatında İndir</a></li>
+  </ul>
+</div>                    </div>
                     <div class="card-body p-0">
                         <pre id="outputConsole" class="console-box m-0 p-3"></pre>
                     </div>
@@ -368,7 +375,7 @@
                             </div>
                             <div class="col-md-6 d-flex gap-2 justify-content-end align-items-center flex-wrap">
                                 <button id="btnReadSelectedFile" class="btn btn-sm btn-info text-white" onclick="fetchSelectedFile()" disabled>
-                                    Dosyayı Aç
+                                    Dosyayı Görüntüle
                                 </button>
                                 <button id="btnFetchLogs" class="btn btn-sm btn-success" onclick="fetchTailLogs()" disabled>
                                     Son 100 Satır
@@ -404,7 +411,7 @@
                                     🔍 Trace
                                 </button>
                                 <button class="btn btn-sm btn-warning text-dark fw-bold w-50" onclick="triggerContextGrep(15)" title="Bulunan eşleşmenin öncesindeki ve sonrasındaki 15 satırı getirir">
-                                    🎯 ±15 Satır Context
+                                    🎯 Kapsam İncele (±15)
                                 </button>
                                 <button class="btn btn-sm btn-outline-secondary" onclick="clearTraceInputs()" title="Sıfırla">
                                     ✕
@@ -412,28 +419,51 @@
                             </div>
                         </div>
 
+                        <!-- Zaman Aralığı Filtresi (Time Range) -->
+        <div class="row g-2 align-items-center mb-2 p-2 bg-light rounded border">
+          <div class="col-md-3">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text fw-bold">🕒 Başlangıç:</span>
+              <input type="datetime-local" id="filterStartTime" class="form-control">
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text fw-bold">🕒 Bitiş:</span>
+              <input type="datetime-local" id="filterEndTime" class="form-control">
+            </div>
+          </div>
+          <div class="col-md-6 d-flex align-items-center gap-1 justify-content-end">
+            <span class="small text-muted me-1">Hızlı Aralık:</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary py-0" onclick="quickTimeRange(15)">Son 15 Dk</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary py-0" onclick="quickTimeRange(60)">Son 1 Saat</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary py-0" onclick="quickTimeRange(1440)">Bugün</button>
+            <button type="button" class="btn btn-sm btn-outline-danger py-0 ms-1" onclick="clearTimeRange()" title="Tarihleri Temizle">✕</button>
+          </div>
+        </div>
+
                         <!-- Normal Grep & Hızlı Etiketler -->
                         <div class="row g-2 align-items-center mb-2">
                             <div class="col-md-5">
                                 <div class="input-group input-group-sm">
-                                    <span class="input-group-text">Linux Grep:</span>
+                                    <span class="input-group-text">Anahtar Kelime:</span>
                                     <input type="text" id="keywordInput" class="form-control" 
                                            placeholder="Sunucuda ara (Örn: NullPointerException, UserNotFound)..."
                                            onkeydown="if(event.key==='Enter') triggerServerGrep('')">
                                 </div>
                             </div>
                             <div class="col-md-7 d-flex gap-2 align-items-center justify-content-end flex-wrap">
-                                <button class="btn btn-sm btn-outline-danger" onclick="triggerServerGrep('ERROR')">Grep ERROR</button>
-                                <button class="btn btn-sm btn-outline-warning" onclick="triggerServerGrep('WARN')">Grep WARN</button>
-                                <button class="btn btn-sm btn-outline-success" onclick="triggerServerGrep('INFO')">Grep INFO</button>
-                                <button class="btn btn-sm btn-dark" onclick="triggerServerGrep('')">Grep Ara</button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="triggerServerGrep('ERROR')">ERROR</button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="triggerServerGrep('WARN')">WARN</button>
+                                <button class="btn btn-sm btn-outline-success" onclick="triggerServerGrep('INFO')">INFO</button>
+                                <button class="btn btn-sm btn-dark" onclick="triggerServerGrep('')">Sorgula</button>
                                 <button class="btn btn-sm btn-outline-secondary" onclick="clearFilters()">Temizle</button>
                             </div>
                         </div>
 
                         <!-- Hızlı Arama Etiketleri -->
                         <div class="d-flex align-items-center gap-2 pt-1 border-top mb-1 flex-wrap">
-                            <span class="small text-secondary fw-bold">Hızlı Etiketler:</span>
+                            <span class="small text-secondary fw-bold">Ön Tanımlı Hata Filtreleri:</span>
                             <span class="badge border quick-tag" style="background-color: #212529; color: #f8f9fa; cursor: pointer;" onclick="applyQuickTag('Exception')">⚡ Exception</span>
                             <span class="badge border quick-tag" style="background-color: #212529; color: #f8f9fa; cursor: pointer;" onclick="applyQuickTag('SOAP')">📡 SOAP</span>
                             <span class="badge border quick-tag" style="background-color: #212529; color: #f8f9fa; cursor: pointer;" onclick="applyQuickTag('Timeout')">⏱️ Timeout</span>
@@ -1147,7 +1177,7 @@
 
         const dropdown = document.getElementById('fileDropdown');
         dropdown.disabled = true;
-        dropdown.innerHTML = '<option value="">Önce bir sunucu seçiniz...</option>';
+        dropdown.innerHTML = '<option value="">Lütfen Sunucu Seçiniz</option>';
 
         document.querySelectorAll('.env-btn').forEach(b => {
             b.classList.remove('btn-primary');
@@ -1320,36 +1350,48 @@
     }
 
     // Arama çıktısını kendi sekmesindeki konsola yaz
-    async function triggerServerGrep(level) {
+    async function triggerServerGrep(level = '') {
         if (!currentEnvId) {
             showToast('Lütfen önce bir sunucu seçiniz!');
             return;
         }
-        // stopSingleLogStream(); -> ARTIK CANLI AKIŞI DURDURMUYORUZ! İkisi izole çalışıyor.
-        
+
         const fileName = document.getElementById('fileDropdown').value;
         const keyword = document.getElementById('keywordInput').value;
         const sessionId = document.getElementById('sessionIdInput') ? document.getElementById('sessionIdInput').value : '';
         const msisdn = document.getElementById('msisdnInput') ? document.getElementById('msisdnInput').value : '';
 
+        // Yeni eklenen zaman aralığı parametreleri
+        const startTime = document.getElementById('filterStartTime') ? document.getElementById('filterStartTime').value : '';
+        const endTime = document.getElementById('filterEndTime') ? document.getElementById('filterEndTime').value : '';
+
         if (keyword) saveSearchHistory(keyword);
-        if (sessionId) saveSearchHistory('Session:' + sessionId);
-        if (msisdn) saveSearchHistory('MSISDN:' + msisdn);
+        if (sessionId) saveSearchHistory('Session: ' + sessionId);
+        if (msisdn) saveSearchHistory('MSISDN: ' + msisdn);
 
         const consoleBox = document.getElementById('searchOutputConsole');
-        consoleBox.innerHTML = '<span class="text-info">[Sunucuda Grep Çalıştırılıyor...]</span>';
+        consoleBox.innerHTML = '<span class="text-info">[Sunucuda Sorgulama Başlatıldı, awk & grep boru hattı taranıyor...]</span>';
 
         try {
-            const url = `/api/search-grep?envId=${currentEnvId}&fileName=${encodeURIComponent(fileName)}&level=${encodeURIComponent(level || '')}&keyword=${encodeURIComponent(keyword || '')}&sessionId=${encodeURIComponent(sessionId || '')}&msisdn=${encodeURIComponent(msisdn || '')}&lineLimit=200`;
+            const url = `/api/search-grep?envId=${currentEnvId}`
+                      + `&fileName=${encodeURIComponent(fileName)}`
+                      + `&level=${encodeURIComponent(level || '')}`
+                      + `&keyword=${encodeURIComponent(keyword || '')}`
+                      + `&sessionId=${encodeURIComponent(sessionId || '')}`
+                      + `&msisdn=${encodeURIComponent(msisdn || '')}`
+                      + `&startTime=${encodeURIComponent(startTime || '')}`
+                      + `&endTime=${encodeURIComponent(endTime || '')}`
+                      + `&lineLimit=200`;
+
             const res = await fetch(url);
             rawLogContent = await res.text();
-            
+
             consoleBox.innerHTML = formatLogString(rawLogContent);
-            document.getElementById('activeProcess').innerText = `Arama tamamlandı (${new Date().toLocaleTimeString()})`;
+            document.getElementById('activeProcess').innerText = 'Sorgulama tamamlandı';
             updateDashboardStats(currentEnvId);
         } catch (err) {
             consoleBox.innerHTML = `<span class="text-danger">[Hata]: ${err}</span>`;
-            showToast('Grep işlemi sırasında hata oluştu.');
+            showToast('Sorgulama işlemi sırasında hata oluştu.');
         }
     }
 
@@ -1465,8 +1507,8 @@
         }
     }
 
-    function downloadLogFile() {
-        if (!rawLogContent) {
+    function downloadLogFile(source = 'live', ext = 'log') {
+        if (!rawLogContent || !rawLogContent.trim()) {
             showToast('İndirilecek herhangi bir log kaydı bulunmuyor!');
             return;
         }
@@ -1474,12 +1516,29 @@
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `server_log_${new Date().toISOString().slice(0,19).replace(/[:T]/g, '_')}.log`;
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-');
+        a.download = `server_log_${timestamp}.${ext}`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
     }
+
+    function quickTimeRange(minutes) {
+    const end = new Date();
+    const start = new Date(end.getTime() - minutes * 60000);
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const formatForInput = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+    document.getElementById('filterStartTime').value = formatForInput(start);
+    document.getElementById('filterEndTime').value = formatForInput(end);
+}
+
+function clearTimeRange() {
+    document.getElementById('filterStartTime').value = '';
+    document.getElementById('filterEndTime').value = '';
+}
 
     function showConsole() {
         document.getElementById('emptyStateBox').classList.add('d-none');

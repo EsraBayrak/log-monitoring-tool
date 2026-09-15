@@ -96,13 +96,16 @@ public class LogService {
     
     return input.replaceAll("[;&|`$><!]", "").trim();
 }
-    public String searchLogsWithGrep(Long envId, String fileName, String level, String keyword, String sessionId, String msisdn, int lineLimit) {
+   public String searchLogsWithGrep(Long envId, String fileName, String level, String keyword, 
+                                     String sessionId, String msisdn, String startTime, String endTime, int lineLimit) {
         // Girdileri temizle (Command Injection Koruması)
         String safeFileName = sanitizeInput(fileName);
         String safeLevel = sanitizeInput(level);
         String safeKeyword = sanitizeInput(keyword);
         String safeSessionId = sanitizeInput(sessionId);
         String safeMsisdn = sanitizeInput(msisdn);
+        String safeStartTime = sanitizeInput(startTime);
+        String safeEndTime = sanitizeInput(endTime);
 
         ServerEnvironment env = environmentRepository.findById(envId).orElse(null);
         if (env == null) {
@@ -116,38 +119,46 @@ public class LogService {
             searchPath = env.getLogDirectoryPath() + "/*.{out,log}";
         }
 
-        // Aranacak tüm filtre kriterlerini listeye topla
-        List<String> criteria = new ArrayList<>();
-        if (!safeLevel.isBlank()) criteria.add(safeLevel);
+        StringBuilder cmd = new StringBuilder();
+
+        // 1. Aşama: Zaman Aralığı Filtresi (awk ile alfabetik/tarih karşılaştırması)
+        if (!safeStartTime.isBlank() && !safeEndTime.isBlank()) {
+            String s = safeStartTime.replace("T", " ");
+            String e = safeEndTime.replace("T", " ");
+            cmd.append(String.format("awk -v s=\"%s\" -v e=\"%s\" '($1\" \"$2 >= s && $1\" \"$2 <= e)' %s", s, e, searchPath));
+        } else if (!safeStartTime.isBlank()) {
+            String s = safeStartTime.replace("T", " ");
+            cmd.append(String.format("awk -v s=\"%s\" '($1\" \"$2 >= s)' %s", s, searchPath));
+        } else {
+            cmd.append(String.format("cat %s", searchPath));
+        }
+
+        // 2. Aşama: Seviye Filtresi (ERROR / WARN / INFO)
+        if (!safeLevel.isBlank()) {
+            cmd.append(String.format(" | grep -iE \"\\b%s\\b\"", safeLevel));
+        }
+
+        // 3. Aşama: Kurumsal Parametreler (SessionID, MSISDN)
+        if (!safeSessionId.isBlank()) {
+            cmd.append(String.format(" | grep -F \"%s\"", safeSessionId));
+        }
+        if (!safeMsisdn.isBlank()) {
+            cmd.append(String.format(" | grep -F \"%s\"", safeMsisdn));
+        }
+
+        // 4. Aşama: Serbest Kelime Araması (AND mantığıyla piped)
         if (!safeKeyword.isBlank()) {
-            String[] tokens = safeKeyword.split("\\s+");
-            for (String token : tokens) {
-                if (!token.isBlank()) {
-                    criteria.add(token);
+            for (String term : safeKeyword.split("\\s+")) {
+                if (!term.isBlank()) {
+                    cmd.append(String.format(" | grep -iF \"%s\"", term));
                 }
             }
         }
-        if (!safeSessionId.isBlank()) criteria.add(safeSessionId);
-        if (!safeMsisdn.isBlank()) criteria.add(safeMsisdn);
 
-        // Kriter yoksa sadece son satırları çek
-        if (criteria.isEmpty()) {
-            String command = "tail -n " + lineLimit + " " + searchPath;
-            return executeSshCommand(env, command);
-        }
+        // 5. Aşama: Güvenlik, Hata Bastırma ve Limit
+        cmd.append(String.format(" 2>/dev/null | tail -n %d", lineLimit > 0 ? lineLimit : 200));
 
-        // İlk filtreyi ana dosya üzerinde çalıştır
-        StringBuilder command = new StringBuilder();
-        command.append("grep -in \"").append(criteria.get(0)).append("\" ").append(searchPath);
-
-        // Birden fazla kriter varsa (örn: hem SessionID hem ERROR) ardışık boru (pipe) ile süz
-        for (int i = 1; i < criteria.size(); i++) {
-            command.append(" | grep -i \"").append(criteria.get(i)).append("\"");
-        }
-
-        command.append(" | tail -n ").append(lineLimit);
-
-        return executeSshCommand(env, command.toString());
+        return executeSshCommand(env, cmd.toString());
     }
 
     public LogStatsDto analyzeLogStats(Long envId, int lines) {

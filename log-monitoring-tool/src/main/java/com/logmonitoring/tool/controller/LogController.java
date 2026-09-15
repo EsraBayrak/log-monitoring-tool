@@ -43,8 +43,10 @@ public class LogController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String sessionId,
             @RequestParam(required = false) String msisdn,
+            @RequestParam(required = false) String startTime,
+            @RequestParam(required = false) String endTime,
             @RequestParam(defaultValue = "100") int lineLimit) {
-        return logService.searchLogsWithGrep(envId, fileName, level, keyword, sessionId, msisdn, lineLimit);
+        return logService.searchLogsWithGrep(envId, fileName, level, keyword, sessionId, msisdn, startTime, endTime, lineLimit);
     }
 
     @GetMapping("/stats")
@@ -71,4 +73,6 @@ public class LogController {
         String result = logService.searchLogsWithContext(envId, fileName, searchTerm, contextLines);
         return ResponseEntity.ok(result);
     }
+
+   
 }

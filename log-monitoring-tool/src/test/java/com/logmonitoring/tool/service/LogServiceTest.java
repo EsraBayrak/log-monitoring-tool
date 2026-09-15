@@ -57,7 +57,6 @@ class LogServiceTest {
         Long invalidId = 999L;
         when(environmentRepository.findById(invalidId)).thenReturn(Optional.empty());
 
-String result = logService.searchLogsWithGrep(invalidId, "test.log", "ERROR", "NullPointer", null, null, 50);
-        assertEquals("[HATA] Sunucu tanımı bulunamadı.", result);
+String result = logService.searchLogsWithGrep(invalidId, "test.log", "ERROR", "NullPointer", null, null, null, null, 50);        assertEquals("[HATA] Sunucu tanımı bulunamadı.", result);
     }
 }
